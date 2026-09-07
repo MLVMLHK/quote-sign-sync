@@ -14,6 +14,24 @@ def parse_iso_time(iso_str):
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
 
+def get_device_battery():
+    status_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/status"
+    headers = {
+        "Authorization": f"Bearer {DOT_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    try:
+        response = requests.get(status_url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            battery = data.get("battery")
+            if isinstance(battery, dict):
+                return battery.get("level") or battery.get("percent") or battery.get("value")
+            return battery
+    except Exception as e:
+        print(f"Error fetching device status: {e}")
+    return None
+
 def update_meeting_room_status():
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
@@ -68,6 +86,10 @@ def update_meeting_room_status():
         except Exception as parse_err:
             print(f"Skipping event due to parse error: {parse_err}")
 
+    battery_pct = get_device_battery()
+    battery_display = f"Bat: {battery_pct}%" if battery_pct is not None else ""
+    date_str = f"Date: {now.strftime('%d-%b-%y (%A)')}"
+
     if current_meeting:
         status_text = "RESERVED"
         bg_color = "bg-black"
@@ -90,7 +112,8 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": time_window}},
+            {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": date_str}},
+            {"type": "span", "props": {"tw": f"text-lg {sub_text_color} mt-1.5", "children": time_window}},
             {"type": "span", "props": {"tw": f"text-lg text-red-400 font-semibold mt-1.5", "children": remaining_text}}
         ]
     else:
@@ -104,12 +127,14 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color} mt-1.5", "children": f"Next: {next_title}"}},
                 {"type": "span", "props": {"tw": f"text-lg text-gray-500 mt-1.5", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color} mt-1.5", "children": "No more meetings today"}}
             ]
 
     dot_payload = {
@@ -135,6 +160,15 @@ def update_meeting_room_status():
                                     "tw": "flex flex-col justify-center my-auto",
                                     "children": subtext_children
                                 }
+                            },
+                            {
+                                "type": "div",
+                                "props": {
+                                    "tw": "flex justify-end items-center pt-1",
+                                    "children": [
+                                        {"type": "span", "props": {"tw": f"text-xs {sub_text_color if current_meeting else 'text-gray-400'}", "children": battery_display}}
+                                    ]
+                                }
                             }
                         ]
                     }
@@ -152,7 +186,7 @@ def update_meeting_room_status():
     try:
         dot_response = requests.post(dot_url, headers=dot_headers, json=dot_payload)
         dot_response.raise_for_status()
-        print(f"Successfully updated Quote/0 display. Status: {status_text}")
+        print(f"Successfully updated Quote/0 display. Status: {status_text} | Battery: {battery_pct}%")
     except Exception as e:
         print(f"Error pushing to Dot. API: {e}")
 
