@@ -88,9 +88,9 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900 truncate", "children": meeting_title}},
-            {"type": "span", "props": {"tw": "text-xs text-gray-700 mt-0.5", "children": f"Time: {time_window}"}},
-            {"type": "span", "props": {"tw": "text-xs text-red-600 font-semibold mt-0.5", "children": remaining_text}}
+            {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900 truncate", "children": meeting_title}},
+            {"type": "span", "props": {"tw": "text-base text-gray-700 mt-1", "children": f"Time: {time_window}"}},
+            {"type": "span", "props": {"tw": "text-base text-red-600 font-semibold mt-1", "children": remaining_text}}
         ]
     else:
         status_text = "VACANT"
@@ -99,14 +99,14 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": "text-xs text-gray-600 mt-1", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": "text-xs text-gray-500", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": "text-base text-gray-600 mt-1", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": "text-base text-gray-500 mt-1", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": "text-xs text-gray-600 mt-1", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": "text-base text-gray-600 mt-1", "children": "No more meetings today"}}
             ]
 
     dot_payload = {
@@ -122,8 +122,8 @@ def update_meeting_room_status():
                                 "props": {
                                     "tw": "flex justify-between items-center border-b pb-1",
                                     "children": [
-                                        {"type": "span", "props": {"tw": f"text-base font-bold {color_class}", "children": status_text}},
-                                        {"type": "span", "props": {"tw": "text-xs text-gray-400", "children": datetime.now().strftime('%H:%M')}}
+                                        {"type": "span", "props": {"tw": f"text-5xl font-bold {color_class}", "children": status_text}},
+                                        {"type": "span", "props": {"tw": "text-base text-gray-400", "children": datetime.now().strftime('%H:%M')}}
                                     ]
                                 }
                             },
