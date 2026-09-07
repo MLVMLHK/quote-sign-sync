@@ -69,9 +69,13 @@ def update_meeting_room_status():
             print(f"Skipping event due to parse error: {parse_err}")
 
     if current_meeting:
-        status_text = "IN USE"
+        status_text = "RESERVED / IN USE"
         meeting_title = current_meeting.get("title", "Meeting in Progress")
-        color_class = "text-red-600"
+        status_color = "text-white"
+        bg_color = "bg-black"
+        main_text_color = "text-white"
+        sub_text_color = "text-gray-300"
+        border_color = "border-gray-800"
         
         start_dt = current_meeting['start_dt']
         end_dt = current_meeting['end_dt']
@@ -88,25 +92,30 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900 truncate", "children": meeting_title}},
-            {"type": "span", "props": {"tw": "text-base text-gray-700 mt-1", "children": f"Time: {time_window}"}},
-            {"type": "span", "props": {"tw": "text-base text-red-600 font-semibold mt-1", "children": remaining_text}}
+            {"type": "span", "props": {"tw": f"text-lg font-bold {main_text_color} truncate", "children": meeting_title}},
+            {"type": "span", "props": {"tw": f"text-base {sub_text_color} mt-1", "children": f"Time: {time_window}"}},
+            {"type": "span", "props": {"tw": f"text-base text-red-400 font-semibold mt-1", "children": remaining_text}}
         ]
     else:
         status_text = "VACANT"
-        color_class = "text-green-600"
+        status_color = "text-green-600"
+        bg_color = "bg-white"
+        main_text_color = "text-black"
+        sub_text_color = "text-gray-700"
+        border_color = "border-gray-200"
+        
         if next_meeting:
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": "text-base text-gray-600 mt-1", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": "text-base text-gray-500 mt-1", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": f"text-lg font-bold {main_text_color}", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": f"text-base {sub_text_color} mt-1", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-base text-gray-500 mt-1", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": "text-lg font-bold text-gray-900", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": "text-base text-gray-600 mt-1", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": f"text-lg font-bold {main_text_color}", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": f"text-base {sub_text_color} mt-1", "children": "No more meetings today"}}
             ]
 
     dot_payload = {
@@ -115,14 +124,14 @@ def update_meeting_room_status():
                 {
                     "type": "div",
                     "props": {
-                        "tw": "flex flex-col h-full justify-between p-3 bg-white",
+                        "tw": f"flex flex-col h-full justify-between p-3 {bg_color} {main_text_color}",
                         "children": [
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": "flex justify-between items-center border-b pb-1",
+                                    "tw": f"flex justify-between items-center border-b {border_color} pb-1",
                                     "children": [
-                                        {"type": "span", "props": {"tw": f"text-5xl font-bold {color_class}", "children": status_text}},
+                                        {"type": "span", "props": {"tw": f"text-3xl font-bold {status_color}", "children": status_text}},
                                         {"type": "span", "props": {"tw": "text-base text-gray-400", "children": datetime.now().strftime('%H:%M')}}
                                     ]
                                 }
