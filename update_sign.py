@@ -69,7 +69,7 @@ def update_meeting_room_status():
             print(f"Skipping event due to parse error: {parse_err}")
 
     if current_meeting:
-        status_text = "RESERVED / IN USE"
+        status_text = "RESERVED"
         meeting_title = current_meeting.get("title", "Meeting in Progress")
         status_color = "text-white"
         bg_color = "bg-black"
