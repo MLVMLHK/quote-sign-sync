@@ -102,6 +102,7 @@ def update_meeting_room_status():
             {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color} mt-1", "children": time_window}},
             {"type": "span", "props": {"tw": f"text-base text-red-300 font-bold mt-1", "children": remaining_text}}
         ]
+        sync_text_color = "text-gray-400"
     else:
         status_text = "VACANT"
         bg_color = "bg-white"
@@ -122,6 +123,7 @@ def update_meeting_room_status():
                 {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color}", "children": date_str}},
                 {"type": "span", "props": {"tw": f"text-base font-bold text-gray-800 mt-1", "children": "No more meetings today"}}
             ]
+        sync_text_color = "text-gray-500"
 
     dot_payload = {
         "windowData": {
@@ -150,9 +152,9 @@ def update_meeting_room_status():
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": f"flex justify-center items-center border-t-2 {border_color} pt-2",
+                                    "tw": "flex justify-start items-center pt-1",
                                     "children": [
-                                        {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color if current_meeting else 'text-gray-800'}", "children": sync_time_str}}
+                                        {"type": "span", "props": {"tw": f"text-xs font-medium {sync_text_color}", "children": sync_time_str}}
                                     ]
                                 }
                             }
