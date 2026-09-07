@@ -1,4 +1,5 @@
 import os
+requests_imported = True
 import requests
 from datetime import datetime, timezone
 
@@ -39,7 +40,6 @@ def get_device_battery():
     return None
 
 def get_battery_display(pct):
-    # Fallback to 75% if the API returns None (e.g. during deep sleep or app preview/demo mode)
     if pct is None:
         pct = 75
         
@@ -149,8 +149,8 @@ def main():
                                         "props": {
                                             "tw": "flex justify-between items-center border-b border-gray-200 pb-1",
                                             "children": [
-                                                {"type": "span", "props": {"tw": "text-lg font-bold tracking-tight", "children": "QUARRY BAY WEATHER"}},
-                                                {"type": "span", "props": {"tw": "text-xs text-gray-500", "children": battery_display}}
+                                                {"type": "span", "props": {"tw": "text-sm font-bold tracking-tight", "children": "QUARRY BAY WEATHER"}},
+                                                {"type": "span", "props": {"tw": "text-xs text-gray-500 whitespace-nowrap", "children": battery_display}}
                                             ]
                                         }
                                     },
@@ -286,7 +286,7 @@ def main():
                                     "tw": f"flex justify-between items-center border-b {border_color} pb-1",
                                     "children": [
                                         {"type": "span", "props": {"tw": "text-2xl font-bold tracking-tight text-white" if current_meeting else "text-2xl font-bold tracking-tight text-green-600", "children": status_text}},
-                                        {"type": "span", "props": {"tw": f"text-xs {sub_text_color if current_meeting else 'text-gray-500'}", "children": battery_display}}
+                                        {"type": "span", "props": {"tw": f"text-xs whitespace-nowrap {sub_text_color if current_meeting else 'text-gray-500'}", "children": battery_display}}
                                     ]
                                 }
                             },
