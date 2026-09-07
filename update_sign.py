@@ -98,11 +98,11 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color} mt-1", "children": time_window}},
-            {"type": "span", "props": {"tw": f"text-base text-red-300 font-bold mt-1", "children": remaining_text}}
+            {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color}", "children": date_str}},
+            {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color} mt-1", "children": time_window}},
+            {"type": "span", "props": {"tw": f"text-sm text-red-300 font-extrabold mt-1", "children": remaining_text}}
         ]
-        sync_text_color = "text-gray-400"
+        sync_text_color = "text-gray-300"
     else:
         status_text = "VACANT"
         bg_color = "bg-white"
@@ -114,16 +114,16 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color} mt-1", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": f"text-base font-bold text-gray-800 mt-1", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color} mt-1", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-sm font-extrabold text-gray-900 mt-1", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-base font-semibold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-base font-bold text-gray-800 mt-1", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": f"text-sm font-bold {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-sm font-extrabold text-gray-900 mt-1", "children": "No more meetings today"}}
             ]
-        sync_text_color = "text-gray-500"
+        sync_text_color = "text-gray-700"
 
     dot_payload = {
         "windowData": {
@@ -131,30 +131,30 @@ def update_meeting_room_status():
                 {
                     "type": "div",
                     "props": {
-                        "tw": f"flex flex-col w-full h-full justify-between p-3.5 {bg_color} {main_text_color}",
+                        "tw": f"flex flex-col w-full h-full p-3 {bg_color} {main_text_color}",
                         "children": [
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": f"flex items-center border-b-2 {border_color} pb-2",
+                                    "tw": f"flex items-center border-b-2 {border_color} pb-1.5",
                                     "children": [
-                                        {"type": "span", "props": {"tw": "text-3xl font-extrabold tracking-wide text-white" if current_meeting else "text-3xl font-extrabold tracking-wide text-green-700", "children": status_text}}
+                                        {"type": "span", "props": {"tw": "text-2xl font-black tracking-tight text-white" if current_meeting else "text-2xl font-black tracking-tight text-green-700", "children": status_text}}
                                     ]
                                 }
                             },
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": "flex flex-col justify-center my-auto py-1",
+                                    "tw": "flex flex-col pt-2 pb-2",
                                     "children": subtext_children
                                 }
                             },
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": "flex justify-start items-center pt-1",
+                                    "tw": f"flex items-center border-t-2 {border_color} pt-1.5 mt-auto",
                                     "children": [
-                                        {"type": "span", "props": {"tw": f"text-xs font-medium {sync_text_color}", "children": sync_time_str}}
+                                        {"type": "span", "props": {"tw": f"text-xs font-bold {sync_text_color}", "children": sync_time_str}}
                                     ]
                                 }
                             }
