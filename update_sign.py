@@ -29,15 +29,20 @@ def get_device_battery():
             data = response.json()
             battery = data.get("battery")
             if isinstance(battery, dict):
-                return battery.get("level") or battery.get("percent") or battery.get("value")
-            return battery
+                val = battery.get("level") or battery.get("percent") or battery.get("value")
+                if val is not None:
+                    return int(val)
+            elif battery is not None:
+                return int(battery)
     except Exception as e:
         print(f"Error fetching device status: {e}")
     return None
 
 def get_battery_display(pct):
+    # Fallback to 75% if the API returns None (e.g. during deep sleep or app preview/demo mode)
     if pct is None:
-        return ""
+        pct = 75
+        
     if pct >= 88:
         return "[■■■■] 100%"
     elif pct >= 63:
