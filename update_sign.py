@@ -7,6 +7,9 @@ ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
 DOT_DEVICE_ID = os.environ.get("DOT_DEVICE_ID")
 
+LAT = 22.2877
+LON = 114.2127
+
 def parse_iso_time(iso_str):
     if not iso_str:
         return None
@@ -44,7 +47,146 @@ def get_battery_display(pct):
     else:
         return "[■□□□] 25%"
 
-def update_meeting_room_status():
+def weather_code_to_icon(code):
+    if code == 0:
+        return "☀️", "Clear"
+    elif code in [1, 2]:
+        return "⛅", "Partly Cloudy"
+    elif code == 3:
+        return "☁️", "Overcast"
+    elif code in [45, 48]:
+        return "🌫️", "Foggy"
+    elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]:
+        return "🌧️", "Rain"
+    elif code in [71, 73, 75, 77]:
+        return "❄️", "Snow"
+    elif code >= 95:
+        return "⚡", "Thunder"
+    return "🌡️", "Fair"
+
+def fetch_quarry_bay_weather():
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&timezone=auto"
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()
+        
+        current_temp = data.get("current", {}).get("temperature_2m", 0)
+        current_code = data.get("current", {}).get("weather_code", 0)
+        curr_icon, curr_desc = weather_code_to_icon(current_code)
+        
+        hourly_times = data.get("hourly", {}).get("time", [])
+        hourly_temps = data.get("hourly", {}).get("temperature_2m", [])
+        hourly_codes = data.get("hourly", {}).get("weather_code", [])
+        
+        now_iso = datetime.now().strftime("%Y-%m-%dT%H:00")
+        start_idx = 0
+        for i, t in enumerate(hourly_times):
+            if t >= now_iso:
+                start_idx = i
+                break
+                
+        forecasts = []
+        for i in range(1, 5):
+            idx = start_idx + i
+            if idx < len(hourly_times):
+                time_label = datetime.fromisoformat(hourly_times[idx]).strftime("%H:%M")
+                temp = hourly_temps[idx]
+                icon, _ = weather_code_to_icon(hourly_codes[idx])
+                forecasts.append({"time": time_label, "temp": f"{temp}°C", "icon": icon})
+                
+        return {
+            "temp": f"{current_temp}°C",
+            "icon": curr_icon,
+            "desc": curr_desc,
+            "forecasts": forecasts
+        }
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        return None
+
+def main():
+    battery_pct = get_device_battery()
+    battery_display = get_battery_display(battery_pct)
+
+    # Alternate screens every 10 minutes based on the current minute block
+    show_weather = ((datetime.now().minute // 10) % 2 == 1)
+
+    dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/canvas"
+    dot_headers = {
+        "Authorization": f"Bearer {DOT_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    if show_weather:
+        weather_data = fetch_quarry_bay_weather()
+        if weather_data:
+            forecast_children = []
+            for f in weather_data["forecasts"]:
+                forecast_children.append({
+                    "type": "div",
+                    "props": {
+                        "tw": "flex flex-col items-center justify-center p-1 bg-gray-100 rounded",
+                        "children": [
+                            {"type": "span", "props": {"tw": "text-xs text-gray-600", "children": f["time"]}},
+                            {"type": "span", "props": {"tw": "text-base my-0.5", "children": f["icon"]}},
+                            {"type": "span", "props": {"tw": "text-xs font-bold text-black", "children": f["temp"]}}
+                        ]
+                    }
+                })
+
+            dot_payload = {
+                "windowData": {
+                    "default": [
+                        {
+                            "type": "div",
+                            "props": {
+                                "tw": "flex flex-col w-full h-full justify-between p-3 bg-white text-black",
+                                "children": [
+                                    {
+                                        "type": "div",
+                                        "props": {
+                                            "tw": "flex justify-between items-center border-b border-gray-200 pb-1",
+                                            "children": [
+                                                {"type": "span", "props": {"tw": "text-xl font-bold tracking-tight", "children": "QUARRY BAY WEATHER"}},
+                                                {"type": "span", "props": {"tw": "text-xs text-gray-500", "children": battery_display}}
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "type": "div",
+                                        "props": {
+                                            "tw": "flex items-center justify-between my-auto px-2",
+                                            "children": [
+                                                {"type": "span", "props": {"tw": "text-4xl", "children": weather_data["icon"]}},
+                                                {"type": "div", "props": {
+                                                    "tw": "flex flex-col items-end",
+                                                    "children": [
+                                                        {"type": "span", "props": {"tw": "text-3xl font-bold", "children": weather_data["temp"]}},
+                                                        {"type": "span", "props": {"tw": "text-sm text-gray-600", "children": weather_data["desc"]}}
+                                                    ]
+                                                }}
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "type": "div",
+                                        "props": {
+                                            "tw": "grid grid-cols-4 gap-2 pt-1 border-t border-gray-100",
+                                            "children": forecast_children
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+            requests.post(dot_url, headers=dot_headers, json=dot_payload)
+            print("Successfully updated Quote/0 display with Quarry Bay Weather.")
+            return
+
+    # Room Status Flow
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
         "Accept": "application/json"
@@ -55,51 +197,38 @@ def update_meeting_room_status():
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat().replace("+00:00", "Z")
     
     url = f"https://api.robinpowered.com/v1.0/spaces/{ROBIN_SPACE_ID}/events"
-    params = {
-        "after": start_of_day,
-        "before": end_of_day
-    }
+    params = {"after": start_of_day, "before": end_of_day}
+    
+    current_meeting = None
+    next_meeting = None
     
     try:
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
-        data = response.json()
-        events = data.get("data", [])
-    except Exception as e:
-        print(f"Error fetching from Robin API: {e}")
-        return
-
-    current_meeting = None
-    next_meeting = None
-    
-    for event in events:
-        try:
+        events = response.json().get("data", [])
+        
+        for event in events:
             start_str = event.get("start", {}).get("utc") or event.get("started_at")
             end_str = event.get("end", {}).get("utc") or event.get("ended_at")
-            
             if not start_str or not end_str:
                 continue
-                
-            start = parse_iso_time(start_str)
-            end = parse_iso_time(end_str)
-            
-            if not start or not end:
+            parse_start = parse_iso_time(start_str)
+            parse_end = parse_iso_time(end_str)
+            if not parse_start or not parse_end:
                 continue
             
-            if start <= now <= end:
+            if parse_start <= now <= parse_end:
                 current_meeting = event
-                current_meeting['start_dt'] = start
-                current_meeting['end_dt'] = end
+                current_meeting['start_dt'] = parse_start
+                current_meeting['end_dt'] = parse_end
                 break
-            elif start > now:
-                if not next_meeting or start < next_meeting['start_dt']:
+            elif parse_start > now:
+                if not next_meeting or parse_start < next_meeting['start_dt']:
                     next_meeting = event
-                    next_meeting['start_dt'] = start
-        except Exception as parse_err:
-            print(f"Skipping event due to parse error: {parse_err}")
+                    next_meeting['start_dt'] = parse_start
+    except Exception as e:
+        print(f"Error fetching from Robin API: {e}")
 
-    battery_pct = get_device_battery()
-    battery_display = get_battery_display(battery_pct)
     date_str = f"Date: {now.strftime('%d-%b-%y (%A)')}"
 
     if current_meeting:
@@ -111,7 +240,6 @@ def update_meeting_room_status():
         
         start_dt = current_meeting['start_dt']
         end_dt = current_meeting['end_dt']
-        
         time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
         
         remaining_seconds = (end_dt - now).total_seconds()
@@ -181,18 +309,12 @@ def update_meeting_room_status():
         }
     }
 
-    dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/canvas"
-    dot_headers = {
-        "Authorization": f"Bearer {DOT_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
     try:
-        dot_response = requests.post(dot_url, headers=dot_headers, json=dot_payload)
-        dot_response.raise_for_status()
-        print(f"Successfully updated Quote/0 display. Status: {status_text} | Battery: {battery_pct}%")
+        response = requests.post(dot_url, headers=dot_headers, json=dot_payload)
+        response.raise_for_status()
+        print(f"Successfully updated Room Status display. Status: {status_text}")
     except Exception as e:
         print(f"Error pushing to Dot. API: {e}")
 
 if __name__ == "__main__":
-    update_meeting_room_status()
+    main()
