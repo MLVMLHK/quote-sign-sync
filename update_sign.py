@@ -70,7 +70,6 @@ def update_meeting_room_status():
 
     if current_meeting:
         status_text = "RESERVED / IN USE"
-        meeting_title = current_meeting.get("title", "Meeting in Progress")
         bg_color = "bg-black"
         main_text_color = "text-white"
         sub_text_color = "text-gray-300"
@@ -79,7 +78,7 @@ def update_meeting_room_status():
         start_dt = current_meeting['start_dt']
         end_dt = current_meeting['end_dt']
         
-        time_window = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+        time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
         
         remaining_seconds = (end_dt - now).total_seconds()
         remaining_mins = max(0, int(remaining_seconds // 60))
@@ -91,9 +90,8 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-base font-bold {main_text_color} truncate", "children": meeting_title}},
-            {"type": "span", "props": {"tw": f"text-sm {sub_text_color} mt-0.5", "children": f"Time: {time_window}"}},
-            {"type": "span", "props": {"tw": f"text-sm text-red-400 font-semibold mt-0.5", "children": remaining_text}}
+            {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": time_window}},
+            {"type": "span", "props": {"tw": f"text-lg text-red-400 font-semibold mt-1.5", "children": remaining_text}}
         ]
     else:
         status_text = "VACANT"
@@ -106,14 +104,12 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-base font-bold {main_text_color}", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": f"text-sm {sub_text_color} mt-0.5", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": f"text-sm text-gray-500 mt-0.5", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-lg text-gray-500 mt-1.5", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-base font-bold {main_text_color}", "children": "Room is available"}},
-                {"type": "span", "props": {"tw": f"text-sm {sub_text_color} mt-0.5", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": f"text-lg {sub_text_color}", "children": "No more meetings today"}}
             ]
 
     dot_payload = {
@@ -122,15 +118,14 @@ def update_meeting_room_status():
                 {
                     "type": "div",
                     "props": {
-                        "tw": f"flex flex-col w-full h-full justify-between p-2.5 {bg_color} {main_text_color}",
+                        "tw": f"flex flex-col w-full h-full justify-between p-3 {bg_color} {main_text_color}",
                         "children": [
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": f"flex justify-between items-center border-b {border_color} pb-1",
+                                    "tw": f"flex items-center border-b {border_color} pb-2",
                                     "children": [
-                                        {"type": "span", "props": {"tw": "text-lg font-bold tracking-tight", "children": status_text}},
-                                        {"type": "span", "props": {"tw": "text-xs text-gray-400", "children": datetime.now().strftime('%H:%M')}}
+                                        {"type": "span", "props": {"tw": "text-2xl font-bold tracking-tight text-white" if current_meeting else "text-2xl font-bold tracking-tight text-green-600", "children": status_text}}
                                     ]
                                 }
                             },
