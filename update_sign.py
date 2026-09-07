@@ -7,13 +7,20 @@ ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
 DOT_DEVICE_ID = os.environ.get("DOT_DEVICE_ID")
 
+def parse_iso_time(iso_str):
+    if not iso_str:
+        return None
+    # Fix timezone offsets like +0800 so Python's fromisoformat can parse them
+    if len(iso_str) >= 5 and iso_str[-5] in ('+', '-') and iso_str[-3] != ':':
+        iso_str = iso_str[:-2] + ':' + iso_str[-2:]
+    return datetime.fromisoformat(iso_str)
+
 def update_meeting_room_status():
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
         "Accept": "application/json"
     }
     
-    # Robin requires 'after' and 'before' ISO-8601 query parameters for events
     now = datetime.now(timezone.utc)
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat().replace("+00:00", "Z")
@@ -43,10 +50,10 @@ def update_meeting_room_status():
             if not start_str or not end_str:
                 continue
                 
-            start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            end = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+            start = parse_iso_time(start_str)
+            end = parse_iso_time(end_str)
             
-            if start <= now <= end:
+            if start and end and start <= now <= end:
                 current_meeting = event
                 break
         except Exception as parse_err:
@@ -78,7 +85,8 @@ def update_meeting_room_status():
         }
     }
 
-    dot_url = f"https://api.dot.mindreset.tech/v1/devices/{DOT_DEVICE_ID}/canvas"
+    # Corrected official Dot. API endpoint path
+    dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/canvas"
     dot_headers = {
         "Authorization": f"Bearer {DOT_API_KEY}",
         "Content-Type": "application/json"
