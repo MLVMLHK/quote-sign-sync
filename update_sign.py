@@ -10,7 +10,6 @@ DOT_DEVICE_ID = os.environ.get("DOT_DEVICE_ID")
 def parse_iso_time(iso_str):
     if not iso_str:
         return None
-    # Fix timezone offsets like +0800 so Python's fromisoformat can parse them
     if len(iso_str) >= 5 and iso_str[-5] in ('+', '-') and iso_str[-3] != ':':
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
@@ -41,6 +40,7 @@ def update_meeting_room_status():
         return
 
     current_meeting = None
+    next_meeting = None
     
     for event in events:
         try:
@@ -53,9 +53,18 @@ def update_meeting_room_status():
             start = parse_iso_time(start_str)
             end = parse_iso_time(end_str)
             
-            if start and end and start <= now <= end:
+            if not start or not end:
+                continue
+            
+            if start <= now <= end:
                 current_meeting = event
+                current_meeting['start_dt'] = start
+                current_meeting['end_dt'] = end
                 break
+            elif start > now:
+                if not next_meeting or start < next_meeting['start_dt']:
+                    next_meeting = event
+                    next_meeting['start_dt'] = start
         except Exception as parse_err:
             print(f"Skipping event due to parse error: {parse_err}")
 
@@ -63,10 +72,42 @@ def update_meeting_room_status():
         status_text = "IN USE"
         meeting_title = current_meeting.get("title", "Meeting in Progress")
         color_class = "text-red-600"
+        
+        start_dt = current_meeting['start_dt']
+        end_dt = current_meeting['end_dt']
+        
+        time_window = f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+        
+        remaining_seconds = (end_dt - now).total_seconds()
+        remaining_mins = max(0, int(remaining_seconds // 60))
+        if remaining_mins >= 60:
+            hrs = remaining_mins // 60
+            mins = remaining_mins % 60
+            remaining_text = f"{hrs}h {mins}m remaining"
+        else:
+            remaining_text = f"{remaining_mins} mins remaining"
+            
+        subtext_children = [
+            {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900 truncate", "children": meeting_title}},
+            {"type": "span", "props": {"tw": "text-xs text-gray-700 mt-0.5", "children": f"Time: {time_window}"}},
+            {"type": "span", "props": {"tw": "text-xs text-red-600 font-semibold mt-0.5", "children": remaining_text}}
+        ]
     else:
         status_text = "VACANT"
-        meeting_title = "Room is available"
         color_class = "text-green-600"
+        if next_meeting:
+            next_start = next_meeting['start_dt']
+            next_title = next_meeting.get("title", "Upcoming Meeting")
+            subtext_children = [
+                {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": "text-xs text-gray-600 mt-1", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": "text-xs text-gray-500", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+            ]
+        else:
+            subtext_children = [
+                {"type": "span", "props": {"tw": "text-xs font-bold text-gray-900", "children": "Room is available"}},
+                {"type": "span", "props": {"tw": "text-xs text-gray-600 mt-1", "children": "No more meetings today"}}
+            ]
 
     dot_payload = {
         "windowData": {
@@ -74,10 +115,25 @@ def update_meeting_room_status():
                 {
                     "type": "div",
                     "props": {
-                        "tw": f"flex flex-col h-full justify-center items-center p-4 bg-white {color_class}",
+                        "tw": "flex flex-col h-full justify-between p-3 bg-white",
                         "children": [
-                            {"type": "span", "props": {"tw": "text-2xl font-bold", "children": status_text}},
-                            {"type": "span", "props": {"tw": "text-sm text-gray-600 mt-2", "children": meeting_title}}
+                            {
+                                "type": "div",
+                                "props": {
+                                    "tw": "flex justify-between items-center border-b pb-1",
+                                    "children": [
+                                        {"type": "span", "props": {"tw": f"text-base font-bold {color_class}", "children": status_text}},
+                                        {"type": "span", "props": {"tw": "text-xs text-gray-400", "children": datetime.now().strftime('%H:%M')}}
+                                    ]
+                                }
+                            },
+                            {
+                                "type": "div",
+                                "props": {
+                                    "tw": "flex flex-col justify-center my-auto",
+                                    "children": subtext_children
+                                }
+                            }
                         ]
                     }
                 }
@@ -85,7 +141,6 @@ def update_meeting_room_status():
         }
     }
 
-    # Corrected official Dot. API endpoint path
     dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/canvas"
     dot_headers = {
         "Authorization": f"Bearer {DOT_API_KEY}",
@@ -95,7 +150,7 @@ def update_meeting_room_status():
     try:
         dot_response = requests.post(dot_url, headers=dot_headers, json=dot_payload)
         dot_response.raise_for_status()
-        print(f"Successfully updated Quote/0 display. Status: {status_text} | Meeting: {meeting_title}")
+        print(f"Successfully updated Quote/0 display. Status: {status_text}")
     except Exception as e:
         print(f"Error pushing to Dot. API: {e}")
 
