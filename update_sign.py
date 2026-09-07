@@ -13,10 +13,19 @@ def update_meeting_room_status():
         "Accept": "application/json"
     }
     
+    # Robin requires 'after' and 'before' ISO-8601 query parameters for events
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat().replace("+00:00", "Z")
+    
     url = f"https://api.robinpowered.com/v1.0/spaces/{ROBIN_SPACE_ID}/events"
+    params = {
+        "after": start_of_day,
+        "before": end_of_day
+    }
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
         events = data.get("data", [])
@@ -24,7 +33,6 @@ def update_meeting_room_status():
         print(f"Error fetching from Robin API: {e}")
         return
 
-    now = datetime.now(timezone.utc)
     current_meeting = None
     
     for event in events:
