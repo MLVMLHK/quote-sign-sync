@@ -47,22 +47,22 @@ def get_battery_display(pct):
     else:
         return "[■□□□] 25%"
 
-def weather_code_to_icon(code):
+def weather_code_to_text(code):
     if code == 0:
-        return "☀️", "Clear"
+        return "Clear"
     elif code in [1, 2]:
-        return "⛅", "Partly Cloudy"
+        return "Partly Cloudy"
     elif code == 3:
-        return "☁️", "Overcast"
+        return "Overcast"
     elif code in [45, 48]:
-        return "🌫️", "Foggy"
+        return "Foggy"
     elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]:
-        return "🌧️", "Rain"
+        return "Rain"
     elif code in [71, 73, 75, 77]:
-        return "❄️", "Snow"
+        return "Snow"
     elif code >= 95:
-        return "⚡", "Thunder"
-    return "🌡️", "Fair"
+        return "Thunder"
+    return "Fair"
 
 def fetch_quarry_bay_weather():
     url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&timezone=auto"
@@ -73,11 +73,10 @@ def fetch_quarry_bay_weather():
         
         current_temp = data.get("current", {}).get("temperature_2m", 0)
         current_code = data.get("current", {}).get("weather_code", 0)
-        curr_icon, curr_desc = weather_code_to_icon(current_code)
+        curr_desc = weather_code_to_text(current_code)
         
         hourly_times = data.get("hourly", {}).get("time", [])
         hourly_temps = data.get("hourly", {}).get("temperature_2m", [])
-        hourly_codes = data.get("hourly", {}).get("weather_code", [])
         
         now_iso = datetime.now().strftime("%Y-%m-%dT%H:00")
         start_idx = 0
@@ -92,12 +91,10 @@ def fetch_quarry_bay_weather():
             if idx < len(hourly_times):
                 time_label = datetime.fromisoformat(hourly_times[idx]).strftime("%H:%M")
                 temp = hourly_temps[idx]
-                icon, _ = weather_code_to_icon(hourly_codes[idx])
-                forecasts.append({"time": time_label, "temp": f"{temp}°C", "icon": icon})
+                forecasts.append({"time": time_label, "temp": f"{temp}°C"})
                 
         return {
             "temp": f"{current_temp}°C",
-            "icon": curr_icon,
             "desc": curr_desc,
             "forecasts": forecasts
         }
@@ -126,11 +123,10 @@ def main():
                 forecast_children.append({
                     "type": "div",
                     "props": {
-                        "tw": "flex flex-col items-center justify-center p-1 bg-gray-100 rounded",
+                        "tw": "flex flex-col items-center justify-center flex-1 p-1 bg-gray-100 rounded",
                         "children": [
                             {"type": "span", "props": {"tw": "text-xs text-gray-600", "children": f["time"]}},
-                            {"type": "span", "props": {"tw": "text-base my-0.5", "children": f["icon"]}},
-                            {"type": "span", "props": {"tw": "text-xs font-bold text-black", "children": f["temp"]}}
+                            {"type": "span", "props": {"tw": "text-xs font-bold text-black mt-1", "children": f["temp"]}}
                         ]
                     }
                 })
@@ -148,7 +144,7 @@ def main():
                                         "props": {
                                             "tw": "flex justify-between items-center border-b border-gray-200 pb-1",
                                             "children": [
-                                                {"type": "span", "props": {"tw": "text-xl font-bold tracking-tight", "children": "QUARRY BAY WEATHER"}},
+                                                {"type": "span", "props": {"tw": "text-lg font-bold tracking-tight", "children": "QUARRY BAY WEATHER"}},
                                                 {"type": "span", "props": {"tw": "text-xs text-gray-500", "children": battery_display}}
                                             ]
                                         }
@@ -156,23 +152,17 @@ def main():
                                     {
                                         "type": "div",
                                         "props": {
-                                            "tw": "flex items-center justify-between my-auto px-2",
+                                            "tw": "flex flex-col justify-center my-auto px-2",
                                             "children": [
-                                                {"type": "span", "props": {"tw": "text-4xl", "children": weather_data["icon"]}},
-                                                {"type": "div", "props": {
-                                                    "tw": "flex flex-col items-end",
-                                                    "children": [
-                                                        {"type": "span", "props": {"tw": "text-3xl font-bold", "children": weather_data["temp"]}},
-                                                        {"type": "span", "props": {"tw": "text-sm text-gray-600", "children": weather_data["desc"]}}
-                                                    ]
-                                                }}
+                                                {"type": "span", "props": {"tw": "text-3xl font-bold", "children": weather_data["temp"]}},
+                                                {"type": "span", "props": {"tw": "text-sm text-gray-600 mt-1", "children": weather_data["desc"]}}
                                             ]
                                         }
                                     },
                                     {
                                         "type": "div",
                                         "props": {
-                                            "tw": "grid grid-cols-4 gap-2 pt-1 border-t border-gray-100",
+                                            "tw": "flex justify-between space-x-2 pt-1 border-t border-gray-100",
                                             "children": forecast_children
                                         }
                                     }
