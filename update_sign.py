@@ -32,6 +32,18 @@ def get_device_battery():
         print(f"Error fetching device status: {e}")
     return None
 
+def get_battery_display(pct):
+    if pct is None:
+        return ""
+    if pct >= 88:
+        return "[■■■■] 100%"
+    elif pct >= 63:
+        return "[■■■□] 75%"
+    elif pct >= 38:
+        return "[■■□□] 50%"
+    else:
+        return "[■□□□] 25%"
+
 def update_meeting_room_status():
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
@@ -87,7 +99,7 @@ def update_meeting_room_status():
             print(f"Skipping event due to parse error: {parse_err}")
 
     battery_pct = get_device_battery()
-    battery_display = f"Bat: {battery_pct}%" if battery_pct is not None else ""
+    battery_display = get_battery_display(battery_pct)
     date_str = f"Date: {now.strftime('%d-%b-%y (%A)')}"
 
     if current_meeting:
@@ -148,9 +160,10 @@ def update_meeting_room_status():
                             {
                                 "type": "div",
                                 "props": {
-                                    "tw": f"flex items-center border-b {border_color} pb-1",
+                                    "tw": f"flex justify-between items-center border-b {border_color} pb-1",
                                     "children": [
-                                        {"type": "span", "props": {"tw": "text-2xl font-bold tracking-tight text-white" if current_meeting else "text-2xl font-bold tracking-tight text-green-600", "children": status_text}}
+                                        {"type": "span", "props": {"tw": "text-2xl font-bold tracking-tight text-white" if current_meeting else "text-2xl font-bold tracking-tight text-green-600", "children": status_text}},
+                                        {"type": "span", "props": {"tw": f"text-xs {sub_text_color if current_meeting else 'text-gray-500'}", "children": battery_display}}
                                     ]
                                 }
                             },
@@ -159,15 +172,6 @@ def update_meeting_room_status():
                                 "props": {
                                     "tw": "flex flex-col justify-center my-auto",
                                     "children": subtext_children
-                                }
-                            },
-                            {
-                                "type": "div",
-                                "props": {
-                                    "tw": "flex justify-end items-center pt-0.5",
-                                    "children": [
-                                        {"type": "span", "props": {"tw": f"text-xs {sub_text_color if current_meeting else 'text-gray-400'}", "children": battery_display}}
-                                    ]
                                 }
                             }
                         ]
