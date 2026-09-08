@@ -154,7 +154,7 @@ def update_meeting_room_status():
                                 "props": {
                                     "tw": f"flex items-center border-b-2 {border_color} pb-1.5",
                                     "children": [
-                                        {"type": "span", "props": {"tw": "text-2xl font-black tracking-tight text-white" if current_meeting else "text-2xl font-black tracking-tight text-green-700", "children": status_text}}
+                                        {"type": "span", "props": {"tw": "text-3xl font-black tracking-tight text-white" if current_meeting else "text-3xl font-black tracking-tight text-green-700", "children": status_text}}
                                     ]
                                 }
                             },
