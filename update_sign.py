@@ -7,7 +7,8 @@ from datetime import datetime, timezone, timedelta
 ROBIN_SPACE_ID = "290741"
 ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
-DOT_DEVICE_ID = os.environ.get("DOT_DEVICE_ID")
+# Support multiple comma-separated device IDs
+DOT_DEVICE_IDS = [d.strip() for d in os.environ.get("DOT_DEVICE_ID", "").split(",") if d.strip()]
 
 HK_TZ = timezone(timedelta(hours=8))
 
@@ -35,6 +36,10 @@ def parse_iso_time(iso_str):
     return datetime.fromisoformat(iso_str)
 
 def update_meeting_room_status():
+    if not DOT_DEVICE_IDS:
+        print("Error: No DOT_DEVICE_ID configured.")
+        return
+
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
         "Accept": "application/json"
@@ -181,17 +186,18 @@ def update_meeting_room_status():
         }
     }
 
-    dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{DOT_DEVICE_ID}/canvas"
     dot_headers = {
         "Authorization": f"Bearer {DOT_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    try:
-        api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload)
-        print(f"Successfully updated Room Status display. Status: {status_text} | Sync: {sync_time_str}")
-    except Exception as e:
-        print(f"Error pushing to Dot. API after retries: {e}")
+    for device_id in DOT_DEVICE_IDS:
+        dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
+        try:
+            api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload)
+            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
+        except Exception as e:
+            print(f"Error pushing to Dot. API for device {device_id} after retries: {e}")
 
 if __name__ == "__main__":
     update_meeting_room_status()
