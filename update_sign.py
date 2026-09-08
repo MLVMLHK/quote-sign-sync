@@ -7,7 +7,6 @@ from datetime import datetime, timezone, timedelta
 ROBIN_SPACE_ID = "290741"
 ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
-# Support multiple comma-separated device IDs
 DOT_DEVICE_IDS = [d.strip() for d in os.environ.get("DOT_DEVICE_ID", "").split(",") if d.strip()]
 
 HK_TZ = timezone(timedelta(hours=8))
@@ -119,11 +118,11 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": time_window}},
-            {"type": "span", "props": {"tw": f"text-xs text-red-300 font-extrabold", "children": remaining_text}}
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": time_window}},
+            {"type": "span", "props": {"tw": f"text-xs text-red-200 font-black", "children": remaining_text}}
         ]
-        sync_text_color = "text-gray-300"
+        sync_text_color = "text-white"
     else:
         status_text = "VACANT"
         bg_color = "bg-white"
@@ -135,16 +134,16 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt']
             next_title = next_meeting.get("title", "Upcoming Meeting")
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold text-gray-900", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
             ]
         else:
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold text-gray-900", "children": "No more meetings today"}}
+                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
+                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings today"}}
             ]
-        sync_text_color = "text-gray-700"
+        sync_text_color = "text-black"
 
     dot_payload = {
         "windowData": {
@@ -175,7 +174,7 @@ def update_meeting_room_status():
                                 "props": {
                                     "tw": f"flex items-center border-t {border_color} pt-0.5",
                                     "children": [
-                                        {"type": "span", "props": {"tw": f"text-xs font-bold {sync_text_color}", "children": sync_time_str}}
+                                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sync_text_color}", "children": sync_time_str}}
                                     ]
                                 }
                             }
@@ -197,7 +196,7 @@ def update_meeting_room_status():
             api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload)
             print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
         except Exception as e:
-            print(f"Error pushing to Dot. API for device {device_id} after retries: {e}")
+            print(f"Error pushing to Dot API for device {device_id} after retries: {e}")
 
 if __name__ == "__main__":
     update_meeting_room_status()
