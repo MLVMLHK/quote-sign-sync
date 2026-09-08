@@ -1,6 +1,7 @@
 import os
-requests_imported = True
+import time
 import requests
+from requests.exceptions import RequestException
 from datetime import datetime, timezone, timedelta
 
 ROBIN_SPACE_ID = "290741"
@@ -9,6 +10,22 @@ DOT_API_KEY = os.environ.get("DOT_API_KEY")
 DOT_DEVICE_ID = os.environ.get("DOT_DEVICE_ID")
 
 HK_TZ = timezone(timedelta(hours=8))
+
+def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
+    for attempt in range(retries):
+        try:
+            if method.lower() == 'get':
+                response = requests.get(url, **kwargs)
+            else:
+                response = requests.post(url, **kwargs)
+            response.raise_for_status()
+            return response
+        except RequestException as e:
+            print(f"API request failed (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay * (attempt + 1))
+            else:
+                raise
 
 def parse_iso_time(iso_str):
     if not iso_str:
@@ -36,12 +53,11 @@ def update_meeting_room_status():
     }
     
     try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
+        response = api_request_with_retry('get', url, headers=headers, params=params)
         data = response.json()
         events = data.get("data", [])
     except Exception as e:
-        print(f"Error fetching from Robin API: {e}")
+        print(f"Error fetching from Robin API after retries: {e}")
         return
 
     current_meeting = None
@@ -172,11 +188,10 @@ def update_meeting_room_status():
     }
 
     try:
-        dot_response = requests.post(dot_url, headers=dot_headers, json=dot_payload)
-        dot_response.raise_for_status()
+        api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload)
         print(f"Successfully updated Room Status display. Status: {status_text} | Sync: {sync_time_str}")
     except Exception as e:
-        print(f"Error pushing to Dot. API: {e}")
+        print(f"Error pushing to Dot. API after retries: {e}")
 
 if __name__ == "__main__":
     update_meeting_room_status()
