@@ -7,25 +7,10 @@ from datetime import datetime, timezone, timedelta
 ROBIN_SPACE_ID = "290741"
 ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
-DOT_DEVICE_IDS = [d.strip() for d in os.environ.get("DOT_DEVICE_ID", "").split(",") if d.strip()]
+# Robustly strip both whitespace and accidental quotes from secret values
+DOT_DEVICE_IDS = [d.strip().strip('"\'') for d in os.environ.get("DOT_DEVICE_ID", "").split(",") if d.strip().strip('"\'')]
 
 HK_TZ = timezone(timedelta(hours=8))
-
-def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
-    for attempt in range(retries):
-        try:
-            if method.lower() == 'get':
-                response = requests.get(url, **kwargs)
-            else:
-                response = requests.post(url, **kwargs)
-            response.raise_for_status()
-            return response
-        except RequestException as e:
-            print(f"API request failed (attempt {attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1:
-                time.sleep(delay * (attempt + 1))
-            else:
-                raise
 
 def parse_iso_time(iso_str):
     if not iso_str:
@@ -61,13 +46,17 @@ def update_meeting_room_status():
         "before": end_of_day
     }
     
-    try:
-        response = api_request_with_retry('get', url, headers=headers, params=params)
-        data = response.json()
-        events = data.get("data", [])
-    except Exception as e:
-        print(f"Error fetching from Robin API after retries: {e}")
-        return
+    # Use a persistent session for Robin API as well
+    with requests.Session() as session:
+        session.headers.update(headers)
+        try:
+            response = session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            events = data.get("data", [])
+        except RequestException as e:
+            print(f"Error fetching from Robin API: {e}")
+            return
 
     current_meeting = None
     next_meeting = None
@@ -195,13 +184,22 @@ def update_meeting_room_status():
         "Content-Type": "application/json"
     }
 
-    for device_id in DOT_DEVICE_IDS:
-        dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
-        try:
-            api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload)
-            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
-        except Exception as e:
-            print(f"Error pushing to Dot API for device {device_id} after retries: {e}")
+    # Use a session for Dot API requests to reuse connections and prevent cold-start drops
+    with requests.Session() as dot_session:
+        dot_session.headers.update(dot_headers)
+        for index, device_id in enumerate(DOT_DEVICE_IDS):
+            dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
+            try:
+                # Brief pause between devices to avoid rate limiting or socket congestion
+                if index > 0:
+                    time.sleep(0.5)
+                
+                response = dot_session.post(dot_url, json=dot_payload, timeout=10)
+                response.raise_for_status()
+                print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
+            except RequestException as e:
+                resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
+                print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
 
 if __name__ == "__main__":
     update_meeting_room_status()
