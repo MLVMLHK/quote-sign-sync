@@ -97,7 +97,7 @@ def update_meeting_room_status():
     sync_time_str = f"Last sync: {now_hk.strftime('%H:%M:%S')} HKT"
 
     if current_meeting:
-        status_text = "RESERVED"
+        status_text = "CoLab: RESERVED"
         bg_color = "bg-black"
         main_text_color = "text-white"
         sub_text_color = "text-white"
@@ -124,7 +124,7 @@ def update_meeting_room_status():
         ]
         sync_text_color = "text-white"
     else:
-        status_text = "VACANT"
+        status_text = "CoLab: VACANT"
         bg_color = "bg-white"
         main_text_color = "text-black"
         sub_text_color = "text-black"
