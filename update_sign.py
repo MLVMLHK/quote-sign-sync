@@ -7,7 +7,6 @@ from datetime import datetime, timezone, timedelta
 ROBIN_SPACE_ID = "290741"
 ROBIN_TOKEN = os.environ.get("ROBIN_TOKEN")
 DOT_API_KEY = os.environ.get("DOT_API_KEY")
-# Robustly strip both whitespace and accidental quotes from secret values
 DOT_DEVICE_IDS = [d.strip().strip('"\'') for d in os.environ.get("DOT_DEVICE_ID", "").split(",") if d.strip().strip('"\'')]
 
 HK_TZ = timezone(timedelta(hours=8))
@@ -24,29 +23,24 @@ def update_meeting_room_status():
         print("Error: No DOT_DEVICE_ID configured.")
         return
 
+    now_utc = datetime.now(timezone.utc)
+    now_hk = datetime.now(HK_TZ)
+    
+    # Weekend sleep mode: Skip updates on Saturdays (5) and Sundays (6)
+    if now_hk.weekday() >= 5:
+        print(f"Today is {now_hk.strftime('%A')}. Skipping update on weekends.")
+        return
+
+    # Nighttime sleep mode: Skip updates between 20:00 and 07:00 HKT
+    if not (7 <= now_hk.hour < 20):
+        print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside operating hours (07:00 - 20:00). Skipping update.")
+        return
+
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
         "Accept": "application/json"
     }
     
-    now_utc = datetime.now(timezone.utc)
-    now_hk = datetime.now(HK_TZ)
-
-    # Skip updates on weekends (Saturday=5, Sunday=6)
-    if now_hk.weekday() >= 5:
-        print(f"Today is {now_hk.strftime('%A')}. Skipping update on weekends.")
-        return
-
-    # Sleep mode: Skip updates between 20:00 and 07:00 HKT
-    if not (7 <= now_hk.hour < 20):
-        print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside operating hours (07:00 - 20:00). Skipping update.")
-        return
-    
-    # Sleep mode: Skip updates between 20:00 and 07:00 HKT
-    if not (7 <= now_hk.hour < 20):
-        print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside operating hours (07:00 - 20:00). Skipping update.")
-        return
-
     start_of_day = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
     end_of_day = now_utc.replace(hour=23, minute=59, second=59, microsecond=0).isoformat().replace("+00:00", "Z")
     
@@ -56,7 +50,6 @@ def update_meeting_room_status():
         "before": end_of_day
     }
     
-    # Use a persistent session for Robin API as well
     with requests.Session() as session:
         session.headers.update(headers)
         try:
@@ -194,16 +187,13 @@ def update_meeting_room_status():
         "Content-Type": "application/json"
     }
 
-    # Use a session for Dot API requests to reuse connections and prevent cold-start drops
     with requests.Session() as dot_session:
         dot_session.headers.update(dot_headers)
         for index, device_id in enumerate(DOT_DEVICE_IDS):
             dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
             try:
-                # Brief pause between devices to avoid rate limiting or socket congestion
                 if index > 0:
                     time.sleep(0.5)
-                
                 response = dot_session.post(dot_url, json=dot_payload, timeout=10)
                 response.raise_for_status()
                 print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
