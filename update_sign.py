@@ -31,6 +31,16 @@ def update_meeting_room_status():
     
     now_utc = datetime.now(timezone.utc)
     now_hk = datetime.now(HK_TZ)
+
+    # Skip updates on weekends (Saturday=5, Sunday=6)
+    if now_hk.weekday() >= 5:
+        print(f"Today is {now_hk.strftime('%A')}. Skipping update on weekends.")
+        return
+
+    # Sleep mode: Skip updates between 20:00 and 07:00 HKT
+    if not (7 <= now_hk.hour < 20):
+        print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside operating hours (07:00 - 20:00). Skipping update.")
+        return
     
     # Sleep mode: Skip updates between 20:00 and 07:00 HKT
     if not (7 <= now_hk.hour < 20):
