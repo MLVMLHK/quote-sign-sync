@@ -1,8 +1,8 @@
 name: Update Meeting Room Sign
 on:
   schedule:
-    # Runs every 10 minutes between 23:00 and 12:00 UTC (07:00 to 20:00 HKT)
-    - cron: '57,07,17,27,37,47 23,0-12 * * *'
+    # Runs every 10 minutes between 23:00 and 12:00 UTC, Monday through Friday only
+    - cron: '57,07,17,27,37,47 23,0-12 * * 1-5'
   workflow_dispatch:
 
 jobs:
