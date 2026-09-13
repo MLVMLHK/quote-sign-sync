@@ -26,15 +26,15 @@ def update_meeting_room_status():
     now_utc = datetime.now(timezone.utc)
     now_hk = datetime.now(HK_TZ)
     
-    # Condition 1: Only execute on Monday to Friday (Monday=0, Friday=4)
+    # 1. Only execute on Monday to Friday (Monday=0, Friday=4)
     if now_hk.weekday() >= 5:
         print(f"Today is {now_hk.strftime('%A')}. Skipping update (Weekend sleep mode).")
         return
 
-    # Condition 2 & 3: Only execute between 07:58 and 19:58 HKT; otherwise sleep
+    # 2 & 3. Only execute between 07:58 and 19:58 HKT; otherwise sleep
     current_time_mins = now_hk.hour * 60 + now_hk.minute
-    start_mins = 7 * 60 + 58   # 07:58 HKT (478 minutes)
-    end_mins = 19 * 60 + 58    # 19:58 HKT (1198 minutes)
+    start_mins = 7 * 60 + 58   # 07:58 HKT
+    end_mins = 19 * 60 + 58    # 19:58 HKT
 
     if not (start_mins <= current_time_mins <= end_mins):
         print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside the 07:58 - 19:58 window. Devices remain in sleep mode.")
@@ -45,13 +45,14 @@ def update_meeting_room_status():
         "Accept": "application/json"
     }
     
-    start_of_day = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
-    end_of_day = now_utc.replace(hour=23, minute=59, second=59, microsecond=0).isoformat().replace("+00:00", "Z")
+    # Query a 7-day window to check today, tomorrow, weekend, and next week ahead of time
+    start_of_query = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+    end_of_query = (now_utc + timedelta(days=7)).isoformat().replace("+00:00", "Z")
     
     url = f"https://api.robinpowered.com/v1.0/spaces/{ROBIN_SPACE_ID}/events"
     params = {
-        "after": start_of_day,
-        "before": end_of_day
+        "after": start_of_query,
+        "before": end_of_query
     }
     
     with requests.Session() as session:
@@ -66,8 +67,14 @@ def update_meeting_room_status():
             return
 
     current_meeting = None
-    next_meeting = None
-    
+    today_future_meetings = []
+    tomorrow_meetings = []
+    weekend_meetings = []
+    next_week_meetings = []
+
+    today_date = now_hk.date()
+    tomorrow_date = today_date + timedelta(days=1)
+
     for event in events:
         try:
             start_str = event.get("start", {}).get("utc") or event.get("started_at")
@@ -82,17 +89,30 @@ def update_meeting_room_status():
             if not parse_start or not parse_end:
                 continue
             
+            event_obj = event.copy()
+            event_obj['start_dt'] = parse_start
+            event_obj['end_dt'] = parse_end
+            event_hk_date = parse_start.astimezone(HK_TZ).date()
+            
             if parse_start <= now_utc <= parse_end:
-                current_meeting = event
-                current_meeting['start_dt'] = parse_start
-                current_meeting['end_dt'] = parse_end
-                break
+                current_meeting = event_obj
             elif parse_start > now_utc:
-                if not next_meeting or parse_start < next_meeting['start_dt']:
-                    next_meeting = event
-                    next_meeting['start_dt'] = parse_start
+                if event_hk_date == today_date:
+                    today_future_meetings.append(event_obj)
+                elif event_hk_date == tomorrow_date:
+                    tomorrow_meetings.append(event_obj)
+                elif event_hk_date.weekday() in (5, 6):
+                    weekend_meetings.append(event_obj)
+                elif event_hk_date > today_date:
+                    next_week_meetings.append(event_obj)
         except Exception as parse_err:
             print(f"Skipping event due to parse error: {parse_err}")
+
+    # Sort upcoming lists chronologically
+    today_future_meetings.sort(key=lambda x: x['start_dt'])
+    tomorrow_meetings.sort(key=lambda x: x['start_dt'])
+    weekend_meetings.sort(key=lambda x: x['start_dt'])
+    next_week_meetings.sort(key=lambda x: x['start_dt'])
 
     date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
     sync_time_str = f"Last sync: {now_hk.strftime('%H:%M:%S')} HKT"
@@ -106,7 +126,6 @@ def update_meeting_room_status():
         
         start_dt = current_meeting['start_dt']
         end_dt = current_meeting['end_dt']
-        
         time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
         
         remaining_seconds = (end_dt - now_utc).total_seconds()
@@ -124,6 +143,22 @@ def update_meeting_room_status():
             {"type": "span", "props": {"tw": f"text-xs text-red-200 font-black", "children": remaining_text}}
         ]
         sync_text_color = "text-white"
+    elif today_future_meetings:
+        status_text = "CoLab: VACANT"
+        bg_color = "bg-white"
+        main_text_color = "text-black"
+        sub_text_color = "text-black"
+        border_color = "border-gray-300"
+        
+        next_meeting = today_future_meetings[0]
+        next_start = next_meeting['start_dt'].astimezone(HK_TZ)
+        next_title = next_meeting.get("title", "Upcoming Meeting")
+        subtext_children = [
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_title}"}},
+            {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+        ]
+        sync_text_color = "text-black"
     else:
         status_text = "CoLab: VACANT"
         bg_color = "bg-white"
@@ -131,19 +166,57 @@ def update_meeting_room_status():
         sub_text_color = "text-black"
         border_color = "border-gray-300"
         
-        if next_meeting:
-            next_start = next_meeting['start_dt']
-            next_title = next_meeting.get("title", "Upcoming Meeting")
+        is_friday = (now_hk.weekday() == 4)
+        
+        if is_friday and not weekend_meetings:
+            # Condition 2: After last schedule on Friday, no reservation for Sat or Sun
+            if next_week_meetings:
+                nw_start = next_week_meetings[0]['start_dt'].astimezone(HK_TZ)
+                time_str = nw_start.strftime('%d-%b %H:%M')
+                subtext_children = [
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {time_str}"}}
+                ]
+            else:
+                subtext_children = [
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No upcoming reservations next week."}}
+                ]
+        elif is_friday and weekend_meetings:
+            next_meeting = weekend_meetings[0]
+            next_start = next_meeting['start_dt'].astimezone(HK_TZ)
+            next_title = next_meeting.get("title", "Weekend Meeting")
             subtext_children = [
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_title}"}},
-                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
             ]
         else:
-            subtext_children = [
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings today"}}
-            ]
+            # Condition 1: Mon - Thu, after last schedule of the day, display first schedule for tomorrow
+            if tomorrow_meetings:
+                tom_start = tomorrow_meetings[0]['start_dt'].astimezone(HK_TZ)
+                tom_time = tom_start.strftime('%H:%M')
+                subtext_children = [
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
+                ]
+            else:
+                all_future = weekend_meetings + next_week_meetings
+                if all_future:
+                    fut_start = all_future[0]['start_dt'].astimezone(HK_TZ)
+                    fut_str = fut_start.strftime('%d-%b %H:%M')
+                    subtext_children = [
+                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
+                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
+                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
+                    ]
+                else:
+                    subtext_children = [
+                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
+                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings scheduled."}}
+                    ]
         sync_text_color = "text-black"
 
     dot_payload = {
