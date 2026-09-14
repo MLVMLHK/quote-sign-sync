@@ -45,7 +45,7 @@ def update_meeting_room_status():
         "Accept": "application/json"
     }
     
-    # Query a 7-day window with microseconds stripped (Robin API rejects fractional seconds)
+    # Query a 7-day window with microseconds stripped to prevent API 400 errors
     start_of_query = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
     end_of_query = (now_utc + timedelta(days=7)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     
@@ -152,10 +152,10 @@ def update_meeting_room_status():
         
         next_meeting = today_future_meetings[0]
         next_start = next_meeting['start_dt'].astimezone(HK_TZ)
-        next_title = next_meeting.get("title", "Upcoming Meeting")
+        next_end = next_meeting['end_dt'].astimezone(HK_TZ)
         subtext_children = [
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_title}"}},
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
             {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
         ]
         sync_text_color = "text-black"
@@ -174,21 +174,21 @@ def update_meeting_room_status():
                 time_str = nw_start.strftime('%d-%b %H:%M')
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week:"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"To start from: {time_str}"}}
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {time_str}"}}
                 ]
             else:
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No upcoming reservations next week"}}
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No upcoming reservations next week."}}
                 ]
         elif is_friday and weekend_meetings:
             next_meeting = weekend_meetings[0]
             next_start = next_meeting['start_dt'].astimezone(HK_TZ)
-            next_title = next_meeting.get("title", "Weekend Meeting")
+            next_end = next_meeting['end_dt'].astimezone(HK_TZ)
             subtext_children = [
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_title}"}},
+                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
                 {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
             ]
         else:
@@ -197,8 +197,8 @@ def update_meeting_room_status():
                 tom_time = tom_start.strftime('%H:%M')
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation:"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"To start from: {tom_time}"}}
+                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
+                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
                 ]
             else:
                 all_future = weekend_meetings + next_week_meetings
@@ -207,13 +207,13 @@ def update_meeting_room_status():
                     fut_str = fut_start.strftime('%d-%b %H:%M')
                     subtext_children = [
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation:"}},
-                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"To start from: {fut_str}"}}
+                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
+                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
                     ]
                 else:
                     subtext_children = [
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings scheduled"}}
+                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings scheduled."}}
                     ]
         sync_text_color = "text-black"
 
