@@ -155,8 +155,7 @@ def update_meeting_room_status():
         next_end = next_meeting['end_dt'].astimezone(HK_TZ)
         subtext_children = [
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
-            {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%H:%M')}"}}
+            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}}
         ]
         sync_text_color = "text-black"
     else:
