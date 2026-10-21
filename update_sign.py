@@ -11,6 +11,19 @@ DOT_DEVICE_IDS = [d.strip().strip('"\'') for d in os.environ.get("DOT_DEVICE_ID"
 
 HK_TZ = timezone(timedelta(hours=8))
 
+def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
+    for attempt in range(retries):
+        try:
+            response = requests.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response
+        except RequestException as e:
+            print(f"API request failed (attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay * (attempt + 1))
+            else:
+                raise
+
 def parse_iso_time(iso_str):
     if not iso_str:
         return None
@@ -45,9 +58,12 @@ def update_meeting_room_status():
         "Accept": "application/json"
     }
     
-    # Query a 7-day window with microseconds stripped to prevent API 400 errors
-    start_of_query = now_utc.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
-    end_of_query = (now_utc + timedelta(days=7)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Fine-tuned: Anchor query bounds strictly to HKT calendar day converted to UTC
+    start_of_day_hk = now_hk.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_query_hk = start_of_day_hk + timedelta(days=7)
+    
+    start_of_query = start_of_day_hk.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    end_of_query = end_of_query_hk.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     
     url = f"https://api.robinpowered.com/v1.0/spaces/{ROBIN_SPACE_ID}/events"
     params = {
@@ -55,16 +71,13 @@ def update_meeting_room_status():
         "before": end_of_query
     }
     
-    with requests.Session() as session:
-        session.headers.update(headers)
-        try:
-            response = session.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            events = data.get("data", [])
-        except RequestException as e:
-            print(f"Error fetching from Robin API: {e}")
-            return
+    try:
+        response = api_request_with_retry('get', url, headers=headers, params=params, timeout=10)
+        data = response.json()
+        events = data.get("data", [])
+    except Exception as e:
+        print(f"Error fetching from Robin API after retries: {e}")
+        return
 
     current_meeting = None
     today_future_meetings = []
@@ -261,19 +274,17 @@ def update_meeting_room_status():
         "Content-Type": "application/json"
     }
 
-    with requests.Session() as dot_session:
-        dot_session.headers.update(dot_headers)
-        for index, device_id in enumerate(DOT_DEVICE_IDS):
-            dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
-            try:
-                if index > 0:
-                    time.sleep(0.5)
-                response = dot_session.post(dot_url, json=dot_payload, timeout=10)
-                response.raise_for_status()
-                print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
-            except RequestException as e:
-                resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
-                print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
+    for index, device_id in enumerate(DOT_DEVICE_IDS):
+        dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
+        try:
+            if index > 0:
+                time.sleep(0.5)
+            # Fine-tuned: Added retry logic for Dot API canvas pushes
+            api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
+            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
+        except RequestException as e:
+            resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
+            print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
 
 if __name__ == "__main__":
     update_meeting_room_status()
