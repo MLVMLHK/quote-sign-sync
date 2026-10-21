@@ -3,7 +3,7 @@ name: Update Meeting Room Sign
 on:
   schedule:
     # Runs at 14, 29, 44, and 59 minutes past every hour, Monday through Friday only
-    - cron: '14,29,44,59 * * * 1-5'
+    - cron: '04,14,29,44,59 * * * 1-5'
   workflow_dispatch:
 
 jobs:
