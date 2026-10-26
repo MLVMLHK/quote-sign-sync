@@ -31,22 +31,6 @@ def parse_iso_time(iso_str):
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
 
-def get_hko_weather():
-    try:
-        url = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=en"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            desc = data.get("forecastDesc", "")
-            if desc:
-                first_sentence = desc.split('.')[0].strip()
-                if len(first_sentence) > 32:
-                    first_sentence = first_sentence[:29] + "..."
-                return first_sentence
-    except Exception as e:
-        print(f"Could not fetch HKO weather: {e}")
-    return "Unavailable"
-
 def update_meeting_room_status():
     if not DOT_DEVICE_IDS:
         print("Error: No DOT_DEVICE_ID configured.")
@@ -145,7 +129,6 @@ def update_meeting_room_status():
 
     date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
     sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
-    weather_str = f"Current Weather: {get_hko_weather()}"
 
     if current_meeting:
         status_text = "CoLab: RESERVED"
@@ -168,7 +151,6 @@ def update_meeting_room_status():
             remaining_text = f"{remaining_mins} mins remaining"
             
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": time_window}},
             {"type": "span", "props": {"tw": f"text-xs text-red-200 font-black", "children": remaining_text}}
@@ -185,7 +167,6 @@ def update_meeting_room_status():
         next_start = next_meeting['start_dt'].astimezone(HK_TZ)
         next_end = next_meeting['end_dt'].astimezone(HK_TZ)
         subtext_children = [
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}}
         ]
@@ -204,14 +185,12 @@ def update_meeting_room_status():
                 nw_start = next_week_meetings[0]['start_dt'].astimezone(HK_TZ)
                 time_str = nw_start.strftime('%d-%b %H:%M')
                 subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
                     {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {time_str}"}}
                 ]
             else:
                 subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
                     {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No upcoming reservations next week."}}
                 ]
@@ -220,7 +199,6 @@ def update_meeting_room_status():
             next_start = next_meeting['start_dt'].astimezone(HK_TZ)
             next_end = next_meeting['end_dt'].astimezone(HK_TZ)
             subtext_children = [
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
                 {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
@@ -230,7 +208,6 @@ def update_meeting_room_status():
                 tom_start = tomorrow_meetings[0]['start_dt'].astimezone(HK_TZ)
                 tom_time = tom_start.strftime('%H:%M')
                 subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
                     {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
@@ -241,14 +218,12 @@ def update_meeting_room_status():
                     fut_start = all_future[0]['start_dt'].astimezone(HK_TZ)
                     fut_str = fut_start.strftime('%d-%b %H:%M')
                     subtext_children = [
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
                         {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
                     ]
                 else:
                     subtext_children = [
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": weather_str}},
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                         {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings scheduled."}}
                     ]
@@ -306,7 +281,7 @@ def update_meeting_room_status():
             if index > 0:
                 time.sleep(0.5)
             api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
-            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str} | Weather: {weather_str}")
+            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
         except RequestException as e:
             resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
             print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
