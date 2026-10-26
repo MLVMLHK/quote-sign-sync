@@ -39,23 +39,44 @@ def get_device_battery(device_id, dot_api_key):
             "Accept": "application/json"
         }
         res = requests.get(url, headers=headers, timeout=5)
-        print(f"Battery API Response [{res.status_code}]: {res.text}")  # Debug line to inspect response
+        print(f"Battery API Response [{res.status_code}]: {res.text}")
         
         if res.status_code == 200:
             body = res.json()
+            
+            # Recursive search for any key containing battery/level/percentage
+            def find_battery(obj):
+                if isinstance(obj, dict):
+                    for k, v in obj.items():
+                        if any(term in k.lower() for term in ['batt', 'level', 'percentage', 'soc']):
+                            if isinstance(v, (int, float)) and 0 <= v <= 100:
+                                return f"{int(v)}%"
+                            elif isinstance(v, str) and v.strip().isdigit():
+                                return f"{v.strip()}%"
+                        if isinstance(v, (dict, list)):
+                            res_val = find_battery(v)
+                            if res_val:
+                                return res_val
+                elif isinstance(obj, list):
+                    for item in obj:
+                        res_val = find_battery(item)
+                        if res_val:
+                            return res_val
+                return None
+
+            batt_val = find_battery(body)
+            if batt_val:
+                return batt_val
+                
+            # Fallback to standard top-level dictionary checks
             status_data = body.get("data", body)
             if isinstance(status_data, dict):
-                batt = (
-                    status_data.get("battery") or 
-                    status_data.get("battery_level") or 
-                    status_data.get("batteryLevel") or 
-                    status_data.get("level") or
-                    status_data.get("voltage")
-                )
-                if batt is not None:
-                    if isinstance(batt, (int, float)):
-                        return f"{int(batt)}%"
-                    return str(batt).strip()
+                for k in ['battery', 'battery_level', 'batteryLevel', 'level', 'percentage', 'soc']:
+                    val = status_data.get(k)
+                    if val is not None:
+                        if isinstance(val, (int, float)):
+                            return f"{int(val)}%"
+                        return str(val).strip()
     except Exception as e:
         print(f"Could not fetch battery for {device_id}: {e}")
     return "--%"
@@ -227,97 +248,3 @@ def update_meeting_room_status():
             next_meeting = weekend_meetings[0]
             next_start = next_meeting['start_dt'].astimezone(HK_TZ)
             next_end = next_meeting['end_dt'].astimezone(HK_TZ)
-            subtext_children = [
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
-                {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
-            ]
-        else:
-            if tomorrow_meetings:
-                tom_start = tomorrow_meetings[0]['start_dt'].astimezone(HK_TZ)
-                tom_time = tom_start.strftime('%H:%M')
-                subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
-                ]
-            else:
-                all_future = weekend_meetings + next_week_meetings
-                if all_future:
-                    fut_start = all_future[0]['start_dt'].astimezone(HK_TZ)
-                    fut_str = fut_start.strftime('%d-%b %H:%M')
-                    subtext_children = [
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
-                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
-                    ]
-                else:
-                    subtext_children = [
-                        {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-                        {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No more meetings scheduled."}}
-                    ]
-        sync_text_color = "text-black"
-
-    dot_headers = {
-        "Authorization": f"Bearer {DOT_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    for index, device_id in enumerate(DOT_DEVICE_IDS):
-        dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
-        try:
-            if index > 0:
-                time.sleep(0.5)
-            
-            battery_str = get_device_battery(device_id, DOT_API_KEY)
-            
-            dot_payload = {
-                "refreshNow": True,
-                "windowData": {
-                    "default": [
-                        {
-                            "type": "div",
-                            "props": {
-                                "tw": f"flex flex-col w-full h-full justify-between p-1.5 {bg_color} {main_text_color}",
-                                "children": [
-                                    {
-                                        "type": "div",
-                                        "props": {
-                                            "tw": f"flex items-center border-b {border_color} pb-0.5",
-                                            "children": [
-                                                {"type": "span", "props": {"tw": "text-2xl font-black tracking-tight text-white" if current_meeting else "text-2xl font-black tracking-tight text-green-700", "children": status_text}}
-                                            ]
-                                        }
-                                    },
-                                    {
-                                        "type": "div",
-                                        "props": {
-                                            "tw": "flex flex-col justify-between py-0.5",
-                                            "children": subtext_children
-                                        }
-                                    },
-                                    {
-                                        "type": "div",
-                                        "props": {
-                                            "tw": f"flex justify-between items-center border-t {border_color} pt-0.5",
-                                            "children": [
-                                                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sync_text_color}", "children": sync_time_str}},
-                                                {"type": "span", "props": {"tw": f"text-xs font-extrabold {sync_text_color}", "children": battery_str}}
-                                            ]
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
-            }
-
-            api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
-            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str} | Battery: {battery_str}")
-        except RequestException as e:
-            resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
-            print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
-
-if __name__ == "__main__":
-    update_meeting_room_status()
