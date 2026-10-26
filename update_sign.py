@@ -58,7 +58,7 @@ def update_meeting_room_status():
         "Accept": "application/json"
     }
     
-    # Fine-tuned: Anchor query bounds strictly to HKT calendar day converted to UTC
+    # Anchor query bounds strictly to HKT calendar day converted to UTC
     start_of_day_hk = now_hk.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_query_hk = start_of_day_hk + timedelta(days=7)
     
@@ -128,7 +128,7 @@ def update_meeting_room_status():
     next_week_meetings.sort(key=lambda x: x['start_dt'])
 
     date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
-    sync_time_str = f"Last sync: {now_hk.strftime('%H:%M:%S')} HKT"
+    sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
 
     if current_meeting:
         status_text = "CoLab: RESERVED"
@@ -279,7 +279,6 @@ def update_meeting_room_status():
         try:
             if index > 0:
                 time.sleep(0.5)
-            # Fine-tuned: Added retry logic for Dot API canvas pushes
             api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
             print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
         except RequestException as e:
