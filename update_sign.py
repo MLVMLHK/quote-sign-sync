@@ -31,13 +31,20 @@ def parse_iso_time(iso_str):
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
 
-def format_title(title, max_chars=42):
-    if not title:
-        return "Meeting"
-    title = title.strip()
-    if len(title) > max_chars:
-        return title[:max_chars - 3] + "..."
-    return title
+def format_booker(event):
+    for key in ['organizer', 'creator', 'user']:
+        entity = event.get(key)
+        if isinstance(entity, dict):
+            name = entity.get("name")
+            email = entity.get("email")
+            if name:
+                return f"Booked by: {name.strip()}"
+            elif email:
+                return f"Booked by: {email.strip()}"
+    email = event.get("created_by_email") or event.get("organizer_email")
+    if email:
+        return f"Booked by: {email.strip()}"
+    return "Booked by: Organizer"
 
 def update_meeting_room_status():
     if not DOT_DEVICE_IDS:
@@ -148,7 +155,7 @@ def update_meeting_room_status():
         start_dt = current_meeting['start_dt']
         end_dt = current_meeting['end_dt']
         time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-        meeting_title = format_title(current_meeting.get("title", ""))
+        booker_str = format_booker(current_meeting)
         
         remaining_seconds = (end_dt - now_utc).total_seconds()
         remaining_mins = max(0, int(remaining_seconds // 60))
@@ -162,7 +169,7 @@ def update_meeting_room_status():
         subtext_children = [
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": time_window}},
-            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}},
+            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}},
             {"type": "span", "props": {"tw": f"text-xs text-red-200 font-black", "children": remaining_text}}
         ]
         sync_text_color = "text-white"
@@ -176,12 +183,12 @@ def update_meeting_room_status():
         next_meeting = today_future_meetings[0]
         next_start = next_meeting['start_dt'].astimezone(HK_TZ)
         next_end = next_meeting['end_dt'].astimezone(HK_TZ)
-        meeting_title = format_title(next_meeting.get("title", ""))
+        booker_str = format_booker(next_meeting)
         
         subtext_children = [
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
-            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}}
+            {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}}
         ]
         sync_text_color = "text-black"
     else:
@@ -198,11 +205,11 @@ def update_meeting_room_status():
                 next_meeting = next_week_meetings[0]
                 nw_start = next_meeting['start_dt'].astimezone(HK_TZ)
                 time_str = nw_start.strftime('%d-%b %H:%M')
-                meeting_title = format_title(next_meeting.get("title", ""))
+                booker_str = format_booker(next_meeting)
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}},
+                    {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}},
                     {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {time_str}"}}
                 ]
             else:
@@ -214,11 +221,11 @@ def update_meeting_room_status():
             next_meeting = weekend_meetings[0]
             next_start = next_meeting['start_dt'].astimezone(HK_TZ)
             next_end = next_meeting['end_dt'].astimezone(HK_TZ)
-            meeting_title = format_title(next_meeting.get("title", ""))
+            booker_str = format_booker(next_meeting)
             subtext_children = [
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
-                {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}},
+                {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}},
                 {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
             ]
         else:
@@ -226,11 +233,11 @@ def update_meeting_room_status():
                 next_meeting = tomorrow_meetings[0]
                 tom_start = next_meeting['start_dt'].astimezone(HK_TZ)
                 tom_time = tom_start.strftime('%H:%M')
-                meeting_title = format_title(next_meeting.get("title", ""))
+                booker_str = format_booker(next_meeting)
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}},
+                    {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}},
                     {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
                 ]
             else:
@@ -239,11 +246,11 @@ def update_meeting_room_status():
                     next_meeting = all_future[0]
                     fut_start = next_meeting['start_dt'].astimezone(HK_TZ)
                     fut_str = fut_start.strftime('%d-%b %H:%M')
-                    meeting_title = format_title(next_meeting.get("title", ""))
+                    booker_str = format_booker(next_meeting)
                     subtext_children = [
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation for today."}},
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
-                        {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": meeting_title}},
+                        {"type": "span", "props": {"tw": f"text-xs font-bold {sub_text_color}", "children": booker_str}},
                         {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
                     ]
                 else:
@@ -254,6 +261,7 @@ def update_meeting_room_status():
         sync_text_color = "text-black"
 
     dot_payload = {
+        "refreshNow": True,  # Forces immediate refresh upon sync to overcome device sleep state
         "windowData": {
             "default": [
                 {
