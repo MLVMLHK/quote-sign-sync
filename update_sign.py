@@ -32,43 +32,44 @@ def parse_iso_time(iso_str):
     return datetime.fromisoformat(iso_str)
 
 def get_device_battery(device_id, dot_api_key):
+    headers = {
+        "Authorization": f"Bearer {dot_api_key}",
+        "Accept": "application/json"
+    }
+    
+    # Method 1: Try querying the account devices list
     try:
-        url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
-        headers = {
-            "Authorization": f"Bearer {dot_api_key}",
-            "Accept": "application/json"
-        }
-        res = requests.get(url, headers=headers, timeout=5)
+        url_list = "https://dot.mindreset.tech/api/authV2/open/devices"
+        res = requests.get(url_list, headers=headers, timeout=5)
+        if res.status_code == 200:
+            body = res.json()
+            devices = body.get("data", body)
+            if isinstance(devices, list):
+                for dev in devices:
+                    dev_id = str(dev.get("id") or dev.get("serial_number") or dev.get("device_id") or dev.get("deviceId") or "")
+                    if device_id in dev_id or dev_id in device_id:
+                        batt = (
+                            dev.get("battery") or 
+                            dev.get("battery_level") or 
+                            dev.get("batteryLevel") or 
+                            dev.get("level") or
+                            dev.get("percentage")
+                        )
+                        if batt is not None:
+                            if isinstance(batt, (int, float)):
+                                return f"{int(batt)}%"
+                            return str(batt).strip()
+    except Exception as e:
+        print(f"Could not fetch devices list for battery: {e}")
+
+    # Method 2: Fall back to individual device status endpoint
+    try:
+        url_status = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
+        res = requests.get(url_status, headers=headers, timeout=5)
         print(f"Battery API Response [{res.status_code}]: {res.text}")
         
         if res.status_code == 200:
             body = res.json()
-            
-            # Recursive search for any key containing battery/level/percentage
-            def find_battery(obj):
-                if isinstance(obj, dict):
-                    for k, v in obj.items():
-                        if any(term in k.lower() for term in ['batt', 'level', 'percentage', 'soc']):
-                            if isinstance(v, (int, float)) and 0 <= v <= 100:
-                                return f"{int(v)}%"
-                            elif isinstance(v, str) and v.strip().isdigit():
-                                return f"{v.strip()}%"
-                        if isinstance(v, (dict, list)):
-                            res_val = find_battery(v)
-                            if res_val:
-                                return res_val
-                elif isinstance(obj, list):
-                    for item in obj:
-                        res_val = find_battery(item)
-                        if res_val:
-                            return res_val
-                return None
-
-            batt_val = find_battery(body)
-            if batt_val:
-                return batt_val
-                
-            # Fallback to standard top-level dictionary checks
             status_data = body.get("data", body)
             if isinstance(status_data, dict):
                 for k in ['battery', 'battery_level', 'batteryLevel', 'level', 'percentage', 'soc']:
@@ -79,6 +80,7 @@ def get_device_battery(device_id, dot_api_key):
                         return str(val).strip()
     except Exception as e:
         print(f"Could not fetch battery for {device_id}: {e}")
+        
     return "--%"
 
 def update_meeting_room_status():
@@ -166,85 +168,3 @@ def update_meeting_room_status():
                     tomorrow_meetings.append(event_obj)
                 elif event_hk_date.weekday() in (5, 6):
                     weekend_meetings.append(event_obj)
-                elif event_hk_date > today_date:
-                    next_week_meetings.append(event_obj)
-        except Exception as parse_err:
-            print(f"Skipping event due to parse error: {parse_err}")
-
-    # Sort upcoming lists chronologically
-    today_future_meetings.sort(key=lambda x: x['start_dt'])
-    tomorrow_meetings.sort(key=lambda x: x['start_dt'])
-    weekend_meetings.sort(key=lambda x: x['start_dt'])
-    next_week_meetings.sort(key=lambda x: x['start_dt'])
-
-    date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
-    sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
-
-    if current_meeting:
-        status_text = "CoLab: RESERVED"
-        bg_color = "bg-black"
-        main_text_color = "text-white"
-        sub_text_color = "text-white"
-        border_color = "border-gray-700"
-        
-        start_dt = current_meeting['start_dt']
-        end_dt = current_meeting['end_dt']
-        time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
-        
-        remaining_seconds = (end_dt - now_utc).total_seconds()
-        remaining_mins = max(0, int(remaining_seconds // 60))
-        if remaining_mins >= 60:
-            hrs = remaining_mins // 60
-            mins = remaining_mins % 60
-            remaining_text = f"{hrs}h {mins}m remaining"
-        else:
-            remaining_text = f"{remaining_mins} mins remaining"
-            
-        subtext_children = [
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": time_window}},
-            {"type": "span", "props": {"tw": f"text-xs text-red-200 font-black", "children": remaining_text}}
-        ]
-        sync_text_color = "text-white"
-    elif today_future_meetings:
-        status_text = "CoLab: VACANT"
-        bg_color = "bg-white"
-        main_text_color = "text-black"
-        sub_text_color = "text-black"
-        border_color = "border-gray-300"
-        
-        next_meeting = today_future_meetings[0]
-        next_start = next_meeting['start_dt'].astimezone(HK_TZ)
-        next_end = next_meeting['end_dt'].astimezone(HK_TZ)
-        subtext_children = [
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
-            {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Next: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}}
-        ]
-        sync_text_color = "text-black"
-    else:
-        status_text = "CoLab: VACANT"
-        bg_color = "bg-white"
-        main_text_color = "text-black"
-        sub_text_color = "text-black"
-        border_color = "border-gray-300"
-        
-        is_friday = (now_hk.weekday() == 4)
-        
-        if is_friday and not weekend_meetings:
-            if next_week_meetings:
-                nw_start = next_week_meetings[0]['start_dt'].astimezone(HK_TZ)
-                time_str = nw_start.strftime('%d-%b %H:%M')
-                subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": f"to start from: {time_str}"}}
-                ]
-            else:
-                subtext_children = [
-                    {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
-                    {"type": "span", "props": {"tw": f"text-xs font-black text-black", "children": "No upcoming reservations next week."}}
-                ]
-        elif is_friday and weekend_meetings:
-            next_meeting = weekend_meetings[0]
-            next_start = next_meeting['start_dt'].astimezone(HK_TZ)
-            next_end = next_meeting['end_dt'].astimezone(HK_TZ)
