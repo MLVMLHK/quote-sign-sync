@@ -168,3 +168,23 @@ def update_meeting_room_status():
                     tomorrow_meetings.append(event_obj)
                 elif event_hk_date.weekday() in (5, 6):
                     weekend_meetings.append(event_obj)
+                elif event_hk_date > today_date:
+                    next_week_meetings.append(event_obj)
+        except Exception as parse_err:
+            print(f"Skipping event due to parse error: {parse_err}")
+
+    # Sort upcoming lists chronologically
+    today_future_meetings.sort(key=lambda x: x['start_dt'])
+    tomorrow_meetings.sort(key=lambda x: x['start_dt'])
+    weekend_meetings.sort(key=lambda x: x['start_dt'])
+    next_week_meetings.sort(key=lambda x: x['start_dt'])
+
+    date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
+    sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
+
+    if current_meeting:
+        status_text = "CoLab: RESERVED"
+        bg_color = "bg-black"
+        main_text_color = "text-white"
+        sub_text_color = "text-white"
+        border_color = "border-gray-700"
