@@ -38,13 +38,13 @@ def format_booker(event):
             name = entity.get("name")
             email = entity.get("email")
             if name:
-                return f"Booked by: {name.strip()}"
+                return name.strip()
             elif email:
-                return f"Booked by: {email.strip()}"
+                return email.strip()
     email = event.get("created_by_email") or event.get("organizer_email")
     if email:
-        return f"Booked by: {email.strip()}"
-    return "Booked by: Organizer"
+        return email.strip()
+    return ""
 
 def update_meeting_room_status():
     if not DOT_DEVICE_IDS:
