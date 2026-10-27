@@ -31,6 +31,21 @@ def parse_iso_time(iso_str):
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
 
+def get_device_status(device_id, dot_api_key):
+    """Option 1 & 2 helper: Queries device status to verify reachability and sync feedback."""
+    try:
+        url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
+        headers = {
+            "Authorization": f"Bearer {dot_api_key}",
+            "Accept": "application/json"
+        }
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        print(f"Status check error for device {device_id}: {e}")
+    return None
+
 def update_meeting_room_status():
     if not DOT_DEVICE_IDS:
         print("Error: No DOT_DEVICE_ID configured.")
@@ -280,8 +295,26 @@ def update_meeting_room_status():
         try:
             if index > 0:
                 time.sleep(0.5)
+            
+            # Option 1: Pre-check device status/connectivity before pushing
+            print(f"Pre-checking status for device {device_id}...")
+            pre_status = get_device_status(device_id, DOT_API_KEY)
+            if pre_status:
+                print(f"Device {device_id} pre-check response received successfully.")
+            
+            # Push canvas payload to Dot cloud
             api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
-            print(f"Successfully updated device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
+            print(f"Successfully pushed canvas to cloud for device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
+            
+            # Option 2: Verification & confirmation loop
+            print(f"Verifying sync state for device {device_id}...")
+            time.sleep(3)  # Brief pause to allow device check-in if awake
+            post_status = get_device_status(device_id, DOT_API_KEY)
+            if post_status:
+                print(f"Device {device_id} confirmation check completed.")
+            else:
+                print(f"Note: Device {device_id} did not respond to status verification (likely in deep sleep/snapping mode, payload is queued on cloud).")
+                
         except RequestException as e:
             resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
             print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
