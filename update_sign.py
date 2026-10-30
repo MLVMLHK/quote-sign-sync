@@ -32,7 +32,7 @@ def parse_iso_time(iso_str):
     return datetime.fromisoformat(iso_str)
 
 def get_device_status(device_id, dot_api_key):
-    """Option 1 & 2 helper: Queries device status to verify reachability and sync feedback."""
+    """Queries device status to verify reachability and sync feedback."""
     try:
         url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
         headers = {
@@ -296,19 +296,16 @@ def update_meeting_room_status():
             if index > 0:
                 time.sleep(0.5)
             
-            # Option 1: Pre-check device status/connectivity before pushing
             print(f"Pre-checking status for device {device_id}...")
             pre_status = get_device_status(device_id, DOT_API_KEY)
             if pre_status:
                 print(f"Device {device_id} pre-check response received successfully.")
             
-            # Push canvas payload to Dot cloud
             api_request_with_retry('post', dot_url, headers=dot_headers, json=dot_payload, timeout=10)
             print(f"Successfully pushed canvas to cloud for device {device_id}. Status: {status_text} | Sync: {sync_time_str}")
             
-            # Option 2: Verification & confirmation loop
             print(f"Verifying sync state for device {device_id}...")
-            time.sleep(3)  # Brief pause to allow device check-in if awake
+            time.sleep(3)
             post_status = get_device_status(device_id, DOT_API_KEY)
             if post_status:
                 print(f"Device {device_id} confirmation check completed.")
