@@ -1,5 +1,7 @@
 import os
+import sys
 import time
+import signal
 import requests
 from requests.exceptions import RequestException
 from datetime import datetime, timezone, timedelta
@@ -15,14 +17,25 @@ DOT_DEVICE_IDS = [
 
 HK_TZ = timezone(timedelta(hours=8))
 
-# 1. Cloud check interval (runs on GitHub server = 0% device battery drain)
 ROBIN_POLL_INTERVAL_SECONDS = 60
-
-# 2. Adaptive physical screen refresh intervals (saves ~80% E-ink redraw battery)
-RESERVED_HEARTBEAT_SECONDS = 900   # When RESERVED: update "mins remaining" every 15 mins (900s)
-VACANT_HEARTBEAT_SECONDS = 1800    # When VACANT & unchanged: update "Last sync" every 30 mins (1800s)
-
+RESERVED_HEARTBEAT_SECONDS = 900   # 15 mins when RESERVED
+VACANT_HEARTBEAT_SECONDS = 1800    # 30 mins when VACANT
 MAX_RUNTIME_MINS = int(os.environ.get("MAX_RUNTIME_MINS", "300"))
+
+
+def handle_cancel_signal(signum, frame):
+    print(f"Received stop signal ({signum}). Exiting daemon immediately.")
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, handle_cancel_signal)
+signal.signal(signal.SIGTERM, handle_cancel_signal)
+
+
+def interruptible_sleep(seconds):
+    """Sleeps in 1-second increments so GitHub cancel signals take effect immediately."""
+    for _ in range(int(seconds)):
+        time.sleep(1)
 
 
 def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
@@ -34,7 +47,7 @@ def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
         except RequestException as e:
             print(f"API request failed (attempt {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
-                time.sleep(delay * (attempt + 1))
+                interruptible_sleep(delay * (attempt + 1))
             else:
                 raise
 
@@ -317,7 +330,7 @@ def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_ca
 
     for index, device_id in enumerate(DOT_DEVICE_IDS):
         if index > 0:
-            time.sleep(0.5)
+            interruptible_sleep(1)
 
         dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
         tasks = device_tasks_cache.get(device_id)
@@ -387,7 +400,7 @@ def run_workday_daemon():
             wait_mins = start_mins - current_time_mins
             sleep_secs = min(300, max(15, wait_mins * 60))
             print(f"Current HKT time is {now_hk.strftime('%H:%M')} (before 07:58 HKT). Waiting {sleep_secs}s...")
-            time.sleep(sleep_secs)
+            interruptible_sleep(sleep_secs)
             continue
 
         try:
@@ -408,7 +421,7 @@ def run_workday_daemon():
         except Exception as e:
             print(f"Error during sync cycle: {e}")
 
-        time.sleep(ROBIN_POLL_INTERVAL_SECONDS)
+        interruptible_sleep(ROBIN_POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
