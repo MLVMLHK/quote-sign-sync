@@ -15,9 +15,13 @@ DOT_DEVICE_IDS = [
 
 HK_TZ = timezone(timedelta(hours=8))
 
-# Daemon timing configuration
-ROBIN_POLL_INTERVAL_SECONDS = 60       # Check Robin every 60 seconds for instant booking changes
-HEARTBEAT_PUSH_INTERVAL_SECONDS = 300  # Push to Dot at least every 5 minutes (300s)
+# 1. Cloud check interval (runs on GitHub server = 0% device battery drain)
+ROBIN_POLL_INTERVAL_SECONDS = 60
+
+# 2. Adaptive physical screen refresh intervals (saves ~80% E-ink redraw battery)
+RESERVED_HEARTBEAT_SECONDS = 900   # When RESERVED: update "mins remaining" every 15 mins (900s)
+VACANT_HEARTBEAT_SECONDS = 1800    # When VACANT & unchanged: update "Last sync" every 30 mins (1800s)
+
 MAX_RUNTIME_MINS = int(os.environ.get("MAX_RUNTIME_MINS", "300"))
 
 
@@ -44,10 +48,6 @@ def parse_iso_time(iso_str):
 
 
 def discover_canvas_tasks(device_id, dot_api_key):
-    """
-    Queries both 'loop' and 'fixed' task lists on the Dot device so we target
-    the exact taskKey(s) configured in Dot. App Content Studio.
-    """
     headers = {
         "Authorization": f"Bearer {dot_api_key}",
         "Accept": "application/json"
@@ -75,30 +75,7 @@ def discover_canvas_tasks(device_id, dot_api_key):
     return discovered
 
 
-def check_and_optimize_device_settings(device_id, dot_api_key):
-    """
-    Logs the device's current wake/refresh settings and attempts to ensure
-    a fast 5-minute (300,000 ms) refresh interval via the Dot Settings API.
-    """
-    headers = {
-        "Authorization": f"Bearer {dot_api_key}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/settings"
-    try:
-        res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            print(f"Device {device_id} current settings: {res.text}")
-    except Exception as e:
-        print(f"Could not read settings for {device_id}: {e}")
-
-
 def fetch_robin_state(now_utc, now_hk):
-    """
-    Fetches Robin events and computes the display state and a state_signature
-    used to detect immediate booking changes.
-    """
     headers = {
         "Authorization": f"Access-Token {ROBIN_TOKEN}",
         "Accept": "application/json"
@@ -166,6 +143,7 @@ def fetch_robin_state(now_utc, now_hk):
 
     date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
     sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
+    is_reserved = bool(current_meeting)
 
     if current_meeting:
         status_text = "CoLab: RESERVED"
@@ -174,7 +152,6 @@ def fetch_robin_state(now_utc, now_hk):
         sub_text_color = "text-white"
         border_color = "border-gray-700"
 
-        # Convert meeting start/end strictly to HKT for display
         start_dt = current_meeting['start_dt'].astimezone(HK_TZ)
         end_dt = current_meeting['end_dt'].astimezone(HK_TZ)
         time_window = f"Time: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
@@ -276,7 +253,7 @@ def fetch_robin_state(now_utc, now_hk):
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                         {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": "No more meetings scheduled."}}
                     ]
-                    state_signature = "VACANT_EMPTY"
+                    state_signature = f"VACANT_EMPTY|{date_str}"
         sync_text_color = "text-black"
 
     window_data = {
@@ -329,7 +306,7 @@ def fetch_robin_state(now_utc, now_hk):
         ]
     }
 
-    return status_text, sync_time_str, state_signature, window_data
+    return status_text, sync_time_str, state_signature, is_reserved, window_data
 
 
 def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_cache):
@@ -360,7 +337,6 @@ def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_ca
                     api_request_with_retry('post', dot_url, headers=dot_headers, json=payload, timeout=10)
                     print(f"[{sync_time_str}] Updated {device_id} (taskType={task_type}, taskKey={task_key}) -> {status_text}")
             else:
-                # Standard default loop payload if task discovery returned empty
                 payload = {
                     "taskType": "loop",
                     "refreshNow": True,
@@ -384,11 +360,7 @@ def run_workday_daemon():
     last_state_signature = None
     last_push_timestamp = 0
 
-    # Log device settings once at startup for diagnostics
-    for dev_id in DOT_DEVICE_IDS:
-        check_and_optimize_device_settings(dev_id, DOT_API_KEY)
-
-    print(f"Starting Workday Sync Daemon (max shift runtime: {MAX_RUNTIME_MINS} mins)...")
+    print(f"Starting Battery-Balanced Workday Daemon (max shift runtime: {MAX_RUNTIME_MINS} mins)...")
 
     while True:
         elapsed_mins = (time.time() - job_start_time) / 60.0
@@ -399,7 +371,6 @@ def run_workday_daemon():
         now_utc = datetime.now(timezone.utc)
         now_hk = datetime.now(HK_TZ)
 
-        # 1. Exit cleanly on weekends
         if now_hk.weekday() >= 5:
             print(f"Today is {now_hk.strftime('%A')}. Weekend sleep mode.")
             break
@@ -408,12 +379,10 @@ def run_workday_daemon():
         start_mins = 7 * 60 + 58   # 07:58 HKT
         end_mins = 19 * 60 + 58    # 19:58 HKT
 
-        # 2. If triggered AFTER 19:58 HKT, workday is done -> exit cleanly
         if current_time_mins > end_mins:
-            print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is past 19:58 HKT. Workday complete.")
+            print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is past 19:58 HKT. Entering night sleep mode.")
             break
 
-        # 3. If triggered BEFORE 07:58 HKT, wait until 07:58 HKT instead of exiting!
         if current_time_mins < start_mins:
             wait_mins = start_mins - current_time_mins
             sleep_secs = min(300, max(15, wait_mins * 60))
@@ -421,17 +390,18 @@ def run_workday_daemon():
             time.sleep(sleep_secs)
             continue
 
-        # 4. Inside active window (07:58 - 19:58 HKT): Poll Robin API
         try:
-            status_text, sync_time_str, state_signature, window_data = fetch_robin_state(now_utc, now_hk)
+            status_text, sync_time_str, state_signature, is_reserved, window_data = fetch_robin_state(now_utc, now_hk)
             now_ts = time.time()
 
+            target_heartbeat = RESERVED_HEARTBEAT_SECONDS if is_reserved else VACANT_HEARTBEAT_SECONDS
+
             state_changed = (state_signature != last_state_signature)
-            heartbeat_due = ((now_ts - last_push_timestamp) >= HEARTBEAT_PUSH_INTERVAL_SECONDS)
+            heartbeat_due = ((now_ts - last_push_timestamp) >= target_heartbeat)
 
             if state_changed or heartbeat_due:
-                reason = "BOOKING STATE CHANGED" if state_changed else "5-MIN HEARTBEAT"
-                print(f"Triggering Dot push ({reason}): {state_signature}")
+                reason = "INSTANT BOOKING/STATUS CHANGE" if state_changed else f"PERIODIC HEARTBEAT ({target_heartbeat // 60}m)"
+                print(f"Triggering Dot push [{reason}]: {state_signature}")
                 push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_cache)
                 last_state_signature = state_signature
                 last_push_timestamp = now_ts
