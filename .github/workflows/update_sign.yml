@@ -2,15 +2,24 @@ name: Update Meeting Room Sign
 
 on:
   schedule:
-    # Fallback native schedule (though GitHub may delay this)
-    - cron: '*/5 1-11 * * 1-5'
+    # Off-peak minutes to avoid GitHub top-of-hour queue drops (UTC 23:50 = 07:50 HKT)
+    - cron: '50 23 * * 0-4'
+    - cron: '7,22,37,52 0-11 * * 1-5'
   workflow_dispatch:
   repository_dispatch:
     types: [trigger-sync]
 
+# If a new run triggers (or you click "Run workflow" manually), it cleanly replaces
+# the current sleeping loop, runs an immediate sync, and continues monitoring.
+concurrency:
+  group: meeting-room-sign-daemon
+  cancel-in-progress: true
+
 jobs:
-  run-sync:
+  shift-1:
+    name: Workday Sync Daemon (Shift 1)
     runs-on: ubuntu-latest
+    timeout-minutes: 330
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,9 +32,62 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run sync script
+      - name: Run continuous sync loop
         env:
           ROBIN_TOKEN: ${{ secrets.ROBIN_TOKEN }}
           DOT_API_KEY: ${{ secrets.DOT_API_KEY }}
           DOT_DEVICE_ID: ${{ secrets.DOT_DEVICE_ID }}
-        run: python update_sign.py
+          MAX_RUNTIME_MINS: "300"
+        run: python -u update_sign.py
+
+  shift-2:
+    name: Workday Sync Daemon (Shift 2)
+    needs: shift-1
+    if: always() && github.event_name != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run continuous sync loop
+        env:
+          ROBIN_TOKEN: ${{ secrets.ROBIN_TOKEN }}
+          DOT_API_KEY: ${{ secrets.DOT_API_KEY }}
+          DOT_DEVICE_ID: ${{ secrets.DOT_DEVICE_ID }}
+          MAX_RUNTIME_MINS: "300"
+        run: python -u update_sign.py
+
+  shift-3:
+    name: Workday Sync Daemon (Shift 3)
+    needs: shift-2
+    if: always() && github.event_name != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run continuous sync loop
+        env:
+          ROBIN_TOKEN: ${{ secrets.ROBIN_TOKEN }}
+          DOT_API_KEY: ${{ secrets.DOT_API_KEY }}
+          DOT_DEVICE_ID: ${{ secrets.DOT_DEVICE_ID }}
+          MAX_RUNTIME_MINS: "300"
+        run: python -u update_sign.py
