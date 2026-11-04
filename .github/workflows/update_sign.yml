@@ -2,8 +2,8 @@ name: Update Meeting Room Sign
 
 on:
   schedule:
-    - cron: '50 23 * * 0-4'
-    - cron: '7,22,37,52 0-11 * * 1-5'
+    # Runs Monday through Friday, starting at 00:00 UTC (08:00 HKT) until 11:00 UTC (19:00 HKT)
+    - cron: '0 0,3,6,9 * * 1-5'
   workflow_dispatch:
   repository_dispatch:
     types: [trigger-sync]
@@ -13,62 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  shift-1:
-    name: Workday Sync Daemon (Shift 1)
+  workday-sync:
+    name: Workday Sync Daemon
     runs-on: ubuntu-latest
-    timeout-minutes: 330
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Run continuous sync loop
-        env:
-          ROBIN_TOKEN: ${{ secrets.ROBIN_TOKEN }}
-          DOT_API_KEY: ${{ secrets.DOT_API_KEY }}
-          DOT_DEVICE_ID: ${{ secrets.DOT_DEVICE_ID }}
-          MAX_RUNTIME_MINS: "300"
-        run: python -u update_sign.py
-
-  shift-2:
-    name: Workday Sync Daemon (Shift 2)
-    needs: shift-1
-    if: always() && !cancelled()
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Run continuous sync loop
-        env:
-          ROBIN_TOKEN: ${{ secrets.ROBIN_TOKEN }}
-          DOT_API_KEY: ${{ secrets.DOT_API_KEY }}
-          DOT_DEVICE_ID: ${{ secrets.DOT_DEVICE_ID }}
-          MAX_RUNTIME_MINS: "300"
-        run: python -u update_sign.py
-
-  shift-3:
-    name: Workday Sync Daemon (Shift 3)
-    needs: shift-2
-    if: always() && !cancelled()
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 360
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
