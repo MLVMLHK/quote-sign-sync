@@ -22,6 +22,9 @@ RESERVED_HEARTBEAT_SECONDS = 900   # 15 mins when RESERVED
 VACANT_HEARTBEAT_SECONDS = 1800    # 30 mins when VACANT
 MAX_RUNTIME_MINS = int(os.environ.get("MAX_RUNTIME_MINS", "300"))
 
+# Track alerted devices during this shift to avoid sending duplicate emails every few minutes
+alerted_low_battery_devices = set()
+
 
 def handle_cancel_signal(signum, frame):
     print(f"Received stop signal ({signum}). Exiting daemon immediately.")
@@ -33,7 +36,6 @@ signal.signal(signal.SIGTERM, handle_cancel_signal)
 
 
 def interruptible_sleep(seconds):
-    """Sleeps in 1-second increments so GitHub cancel signals take effect immediately."""
     for _ in range(int(seconds)):
         time.sleep(1)
 
@@ -58,6 +60,65 @@ def parse_iso_time(iso_str):
     if len(iso_str) >= 5 and iso_str[-5] in ('+', '-') and iso_str[-3] != ':':
         iso_str = iso_str[:-2] + ':' + iso_str[-2:]
     return datetime.fromisoformat(iso_str)
+
+
+def send_low_battery_email(device_id, battery_level):
+    """Triggers an email notification via Gmail tool logic when battery is < 15%."""
+    recipient = "michael.li@vml.com"
+    subject = f"⚠️ Low Battery Alert: Meeting Room Display ({device_id})"
+    body = (
+        f"Hello Michael,\n\n"
+        f"This is an automated notification from your meeting room sign manager.\n\n"
+        f"Device ID: {device_id}\n"
+        f"Current Battery Level: {battery_level}%\n\n"
+        f"The battery level has dropped below the 15% threshold. Please recharge or replace "
+        f"the device battery soon to prevent synchronization failures.\n\n"
+        f"Best regards,\nMeeting Room Sign Automation"
+    )
+    
+    print(f"ALERT: Battery for device {device_id} is at {battery_level}%. Sending notification email to {recipient}...")
+    try:
+        # Calls the gmail:send_message tool natively within the environment
+        gmail.send_message(
+            to=[recipient],
+            subject=subject,
+            body=body
+        )
+        print(f"Low battery email successfully queued/sent for device {device_id}.")
+    except Exception as e:
+        print(f"Failed to send low battery email for device {device_id}: {e}")
+
+
+def check_device_battery_status(device_id, dot_api_key):
+    """Fetches device status, checks battery percentage, and triggers alert if < 15%."""
+    try:
+        url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
+        headers = {
+            "Authorization": f"Bearer {dot_api_key}",
+            "Accept": "application/json"
+        }
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            # Parse battery level from response data (supporting multiple common JSON keys)
+            battery = data.get("battery") or data.get("batteryLevel") or data.get("data", {}).get("battery")
+            
+            if battery is not None:
+                try:
+                    battery_val = float(battery)
+                    print(f"Device {device_id} battery level: {battery_val}%")
+                    if battery_val < 15.0:
+                        if device_id not in alerted_low_battery_devices:
+                            send_low_battery_email(device_id, battery_val)
+                            alerted_low_battery_devices.add(device_id)
+                    else:
+                        # Reset alert state if battery gets recharged later
+                        if device_id in alerted_low_battery_devices:
+                            alerted_low_battery_devices.remove(device_id)
+                except ValueError:
+                    pass
+    except Exception as e:
+        print(f"Could not check battery status for {device_id}: {e}")
 
 
 def discover_canvas_tasks(device_id, dot_api_key):
@@ -332,6 +393,9 @@ def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_ca
         if index > 0:
             interruptible_sleep(1)
 
+        # Check battery status before pushing canvas
+        check_device_battery_status(device_id, DOT_API_KEY)
+
         dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
         tasks = device_tasks_cache.get(device_id)
         if tasks is None:
@@ -373,7 +437,7 @@ def run_workday_daemon():
     last_state_signature = None
     last_push_timestamp = 0
 
-    print(f"Starting Battery-Balanced Workday Daemon (max shift runtime: {MAX_RUNTIME_MINS} mins)...")
+    print(f"Starting Battery-Balanced Workday Daemon with Low Battery Alerts (max shift runtime: {MAX_RUNTIME_MINS} mins)...")
 
     while True:
         elapsed_mins = (time.time() - job_start_time) / 60.0
