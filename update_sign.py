@@ -1,7 +1,5 @@
 import os
-import sys
 import time
-import signal
 import requests
 from requests.exceptions import RequestException
 from datetime import datetime, timezone, timedelta
@@ -17,28 +15,6 @@ DOT_DEVICE_IDS = [
 
 HK_TZ = timezone(timedelta(hours=8))
 
-ROBIN_POLL_INTERVAL_SECONDS = 60
-RESERVED_HEARTBEAT_SECONDS = 900   # 15 mins when RESERVED
-VACANT_HEARTBEAT_SECONDS = 1800    # 30 mins when VACANT
-MAX_RUNTIME_MINS = int(os.environ.get("MAX_RUNTIME_MINS", "300"))
-
-# Track alerted devices during this shift to avoid sending duplicate emails every few minutes
-alerted_low_battery_devices = set()
-
-
-def handle_cancel_signal(signum, frame):
-    print(f"Received stop signal ({signum}). Exiting daemon immediately.")
-    sys.exit(0)
-
-
-signal.signal(signal.SIGINT, handle_cancel_signal)
-signal.signal(signal.SIGTERM, handle_cancel_signal)
-
-
-def interruptible_sleep(seconds):
-    for _ in range(int(seconds)):
-        time.sleep(1)
-
 
 def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
     for attempt in range(retries):
@@ -49,7 +25,7 @@ def api_request_with_retry(method, url, retries=3, delay=2, **kwargs):
         except RequestException as e:
             print(f"API request failed (attempt {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
-                interruptible_sleep(delay * (attempt + 1))
+                time.sleep(delay * (attempt + 1))
             else:
                 raise
 
@@ -63,7 +39,6 @@ def parse_iso_time(iso_str):
 
 
 def send_low_battery_email(device_id, battery_level):
-    """Triggers an email notification via Gmail tool logic when battery is < 15%."""
     recipient = "michael.li@vml.com"
     subject = f"⚠️ Low Battery Alert: Meeting Room Display ({device_id})"
     body = (
@@ -78,19 +53,17 @@ def send_low_battery_email(device_id, battery_level):
     
     print(f"ALERT: Battery for device {device_id} is at {battery_level}%. Sending notification email to {recipient}...")
     try:
-        # Calls the gmail:send_message tool natively within the environment
         gmail.send_message(
             to=[recipient],
             subject=subject,
             body=body
         )
-        print(f"Low battery email successfully queued/sent for device {device_id}.")
+        print(f"Low battery email successfully sent for device {device_id}.")
     except Exception as e:
         print(f"Failed to send low battery email for device {device_id}: {e}")
 
 
 def check_device_battery_status(device_id, dot_api_key):
-    """Fetches device status, checks battery percentage, and triggers alert if < 15%."""
     try:
         url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/status"
         headers = {
@@ -100,21 +73,13 @@ def check_device_battery_status(device_id, dot_api_key):
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             data = res.json()
-            # Parse battery level from response data (supporting multiple common JSON keys)
             battery = data.get("battery") or data.get("batteryLevel") or data.get("data", {}).get("battery")
-            
             if battery is not None:
                 try:
                     battery_val = float(battery)
                     print(f"Device {device_id} battery level: {battery_val}%")
                     if battery_val < 15.0:
-                        if device_id not in alerted_low_battery_devices:
-                            send_low_battery_email(device_id, battery_val)
-                            alerted_low_battery_devices.add(device_id)
-                    else:
-                        # Reset alert state if battery gets recharged later
-                        if device_id in alerted_low_battery_devices:
-                            alerted_low_battery_devices.remove(device_id)
+                        send_low_battery_email(device_id, battery_val)
                 except ValueError:
                     pass
     except Exception as e:
@@ -217,7 +182,6 @@ def fetch_robin_state(now_utc, now_hk):
 
     date_str = f"Date: {now_hk.strftime('%d-%b-%y (%A)')}"
     sync_time_str = f"Last sync: {now_hk.strftime('%d/%m %H:%M')} HKT"
-    is_reserved = bool(current_meeting)
 
     if current_meeting:
         status_text = "CoLab: RESERVED"
@@ -245,7 +209,6 @@ def fetch_robin_state(now_utc, now_hk):
             {"type": "span", "props": {"tw": "text-xs text-red-200 font-black", "children": remaining_text}}
         ]
         sync_text_color = "text-white"
-        state_signature = f"RESERVED|{time_window}"
 
     elif today_future_meetings:
         status_text = "CoLab: VACANT"
@@ -263,7 +226,6 @@ def fetch_robin_state(now_utc, now_hk):
             {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": next_str}}
         ]
         sync_text_color = "text-black"
-        state_signature = f"VACANT_TODAY|{next_str}"
 
     else:
         status_text = "CoLab: VACANT"
@@ -283,24 +245,20 @@ def fetch_robin_state(now_utc, now_hk):
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "First reservation for next week"}},
                     {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": f"to start from: {time_str}"}}
                 ]
-                state_signature = f"VACANT_NW|{time_str}"
             else:
                 subtext_children = [
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "No more reservation this week."}},
                     {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": "No upcoming reservations next week."}}
                 ]
-                state_signature = "VACANT_NONE_WEEK"
         elif is_friday and weekend_meetings:
             next_meeting = weekend_meetings[0]
             next_start = next_meeting['start_dt'].astimezone(HK_TZ)
             next_end = next_meeting['end_dt'].astimezone(HK_TZ)
-            wk_str = f"{next_start.strftime('%d-%b %H:%M')}-{next_end.strftime('%H:%M')}"
             subtext_children = [
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                 {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": f"Weekend: {next_start.strftime('%H:%M')} - {next_end.strftime('%H:%M')}"}},
                 {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": f"Starts at {next_start.strftime('%d-%b %H:%M')}"}}
             ]
-            state_signature = f"VACANT_WK|{wk_str}"
         else:
             if tomorrow_meetings:
                 tom_start = tomorrow_meetings[0]['start_dt'].astimezone(HK_TZ)
@@ -310,7 +268,6 @@ def fetch_robin_state(now_utc, now_hk):
                     {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Tomorrow's first reservation"}},
                     {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": f"to start from: {tom_time}"}}
                 ]
-                state_signature = f"VACANT_TOM|{tom_time}"
             else:
                 all_future = weekend_meetings + next_week_meetings
                 if all_future:
@@ -321,13 +278,11 @@ def fetch_robin_state(now_utc, now_hk):
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": "Next reservation"}},
                         {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": f"to start from: {fut_str}"}}
                     ]
-                    state_signature = f"VACANT_FUT|{fut_str}"
                 else:
                     subtext_children = [
                         {"type": "span", "props": {"tw": f"text-xs font-extrabold {sub_text_color}", "children": date_str}},
                         {"type": "span", "props": {"tw": "text-xs font-black text-black", "children": "No more meetings scheduled."}}
                     ]
-                    state_signature = f"VACANT_EMPTY|{date_str}"
         sync_text_color = "text-black"
 
     window_data = {
@@ -380,20 +335,44 @@ def fetch_robin_state(now_utc, now_hk):
         ]
     }
 
-    return status_text, sync_time_str, state_signature, is_reserved, window_data
+    return status_text, sync_time_str, window_data
 
 
-def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_cache):
+def main():
+    if not DOT_DEVICE_IDS:
+        print("Error: No DOT_DEVICE_ID configured.")
+        return
+
+    now_utc = datetime.now(timezone.utc)
+    now_hk = datetime.now(HK_TZ)
+
+    # 1. Guard: Skip on weekends
+    if now_hk.weekday() >= 5:
+        print(f"Today is {now_hk.strftime('%A')}. Skipping update (Weekend mode).")
+        return
+
+    # 2. Guard: Skip outside 07:58 to 19:58 HKT
+    current_time_mins = now_hk.hour * 60 + now_hk.minute
+    start_mins = 7 * 60 + 58
+    end_mins = 19 * 60 + 58
+    if not (start_mins <= current_time_mins <= end_mins):
+        print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is outside active window. Skipping.")
+        return
+
+    print(f"Running one-shot meeting room sync at {now_hk.strftime('%H:%M')} HKT...")
+    status_text, sync_time_str, window_data = fetch_robin_state(now_utc, now_hk)
+
     dot_headers = {
         "Authorization": f"Bearer {DOT_API_KEY}",
         "Content-Type": "application/json"
     }
+    device_tasks_cache = {}
 
     for index, device_id in enumerate(DOT_DEVICE_IDS):
         if index > 0:
-            interruptible_sleep(1)
+            time.sleep(1)
 
-        # Check battery status before pushing canvas
+        # Check battery & send email alert if < 15%
         check_device_battery_status(device_id, DOT_API_KEY)
 
         dot_url = f"https://dot.mindreset.tech/api/authV2/open/device/{device_id}/canvas"
@@ -412,7 +391,7 @@ def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_ca
                         "windowData": window_data
                     }
                     api_request_with_retry('post', dot_url, headers=dot_headers, json=payload, timeout=10)
-                    print(f"[{sync_time_str}] Updated {device_id} (taskType={task_type}, taskKey={task_key}) -> {status_text}")
+                    print(f"Updated {device_id} ({task_type}, {taskKey if 'taskKey' in locals() else 'task'}) -> {status_text}")
             else:
                 payload = {
                     "taskType": "loop",
@@ -420,73 +399,11 @@ def push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_ca
                     "windowData": window_data
                 }
                 api_request_with_retry('post', dot_url, headers=dot_headers, json=payload, timeout=10)
-                print(f"[{sync_time_str}] Updated {device_id} (default loop) -> {status_text}")
-
+                print(f"Updated {device_id} (default loop) -> {status_text}")
         except RequestException as e:
             resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else "No response body"
-            print(f"Error pushing to Dot API for device {device_id}: {e} | Response: {resp_text}")
-
-
-def run_workday_daemon():
-    if not DOT_DEVICE_IDS:
-        print("Error: No DOT_DEVICE_ID configured.")
-        return
-
-    job_start_time = time.time()
-    device_tasks_cache = {}
-    last_state_signature = None
-    last_push_timestamp = 0
-
-    print(f"Starting Battery-Balanced Workday Daemon with Low Battery Alerts (max shift runtime: {MAX_RUNTIME_MINS} mins)...")
-
-    while True:
-        elapsed_mins = (time.time() - job_start_time) / 60.0
-        if elapsed_mins >= MAX_RUNTIME_MINS:
-            print(f"Reached shift limit ({MAX_RUNTIME_MINS} mins). Handing over to next shift.")
-            break
-
-        now_utc = datetime.now(timezone.utc)
-        now_hk = datetime.now(HK_TZ)
-
-        if now_hk.weekday() >= 5:
-            print(f"Today is {now_hk.strftime('%A')}. Weekend sleep mode.")
-            break
-
-        current_time_mins = now_hk.hour * 60 + now_hk.minute
-        start_mins = 7 * 60 + 58   # 07:58 HKT
-        end_mins = 19 * 60 + 58    # 19:58 HKT
-
-        if current_time_mins > end_mins:
-            print(f"Current HKT time ({now_hk.strftime('%H:%M')}) is past 19:58 HKT. Entering night sleep mode.")
-            break
-
-        if current_time_mins < start_mins:
-            wait_mins = start_mins - current_time_mins
-            sleep_secs = min(300, max(15, wait_mins * 60))
-            print(f"Current HKT time is {now_hk.strftime('%H:%M')} (before 07:58 HKT). Waiting {sleep_secs}s...")
-            interruptible_sleep(sleep_secs)
-            continue
-
-        try:
-            status_text, sync_time_str, state_signature, is_reserved, window_data = fetch_robin_state(now_utc, now_hk)
-            now_ts = time.time()
-
-            target_heartbeat = RESERVED_HEARTBEAT_SECONDS if is_reserved else VACANT_HEARTBEAT_SECONDS
-
-            state_changed = (state_signature != last_state_signature)
-            heartbeat_due = ((now_ts - last_push_timestamp) >= target_heartbeat)
-
-            if state_changed or heartbeat_due:
-                reason = "INSTANT BOOKING/STATUS CHANGE" if state_changed else f"PERIODIC HEARTBEAT ({target_heartbeat // 60}m)"
-                print(f"Triggering Dot push [{reason}]: {state_signature}")
-                push_to_dot_devices(window_data, status_text, sync_time_str, device_tasks_cache)
-                last_state_signature = state_signature
-                last_push_timestamp = now_ts
-        except Exception as e:
-            print(f"Error during sync cycle: {e}")
-
-        interruptible_sleep(ROBIN_POLL_INTERVAL_SECONDS)
+            print(f"Error updating device {device_id}: {e} | Response: {resp_text}")
 
 
 if __name__ == "__main__":
-    run_workday_daemon()
+    main()
