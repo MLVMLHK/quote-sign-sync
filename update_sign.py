@@ -391,7 +391,7 @@ def main():
                         "windowData": window_data
                     }
                     api_request_with_retry('post', dot_url, headers=dot_headers, json=payload, timeout=10)
-                    print(f"Updated {device_id} ({task_type}, {taskKey if 'taskKey' in locals() else 'task'}) -> {status_text}")
+                    print(f"Updated {device_id} ({task_type}, {task_key}) -> {status_text}")
             else:
                 payload = {
                     "taskType": "loop",
